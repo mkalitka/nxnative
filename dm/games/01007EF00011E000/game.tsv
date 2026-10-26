@@ -18,6 +18,10 @@ app_category	public.app-category.adventure-games
 pad_layout	full
 
 # ---- Graphics ----
+# Wider camera on wide displays, with UI kept in the centre 16:9; only builds with WIDESCREEN fixups.
+# DM_WIDESCREEN=0 / the launcher's 16:9 choice restores the original view.
+widescreen	on
+widescreen_ui	quads
 # The frame-interval controller (60 fps cuts in patches.py) and dynamic resolution read the GPU time between the frame's two timestamp reports: each report takes its segment's GPU start / end
 gpu_timestamps	segment
 # 60 fps (30 on the Switch): the host decides each frame's step in whole vsyncs and holds the frame that long (rewriter stubs at setWaitVsyncInterval and VFR::updateInterval,

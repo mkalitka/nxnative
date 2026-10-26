@@ -33,6 +33,7 @@
 #include "nvn_cover.h"
 #include "nvn_border.h"
 #include "nvn_primitive.h"
+#include "nvn_widescreen.h"
 #include "nvn_timestamp.h"
 #include "msl_image.h"
 #include "dmsh_chain.h"   // DMSH_CHAIN: the translation chain version of the B shader library expected by this source tree, one for every game (beside this file, tools/dmsh_chain.py --header)
@@ -1379,6 +1380,7 @@ void mtl_prepare(void) {
 static void sub_cut_begin(void); static void ts_sub_begin(void), ts_boundary(void); static int ts_on(void);
 static void gmem_commit_patch(void);   // the raw pool table words of the arguments encoded so far follow the pools (gmem_slot_note)
 void mtl_sub_begin(void) {
+    mtl_widescreen_start();
     mtl_init(); g_sub_serial++; g_seg = 0; seg_clk_put(g_sclk); g_sclk = NULL;
     sub_cut_begin();
     defer_drain();
@@ -2426,6 +2428,35 @@ void mtl_drain(void) { present_drop_for_suspend(); mtl_present_flush(); snap_dra
 
 // ================= Render replay =================
 #include "../../host/front.h"
+
+// The loader exposes this only when main's fixups include WIDESCREEN. Weak for graphics-only tools.
+__attribute__((weak)) uint8_t *dm_widescreen_state;
+static uint8_t *wide_state(void) { return dm_widescreen_state; }
+static double wide_aspect(void) {
+    uint8_t *p = wide_state(); if (!p) return 0;
+    uint32_t bits = atomic_load_explicit((_Atomic uint32_t *)(p + 4), memory_order_relaxed);
+    float a; memcpy(&a, &bits, 4); return a > 16.0 / 9.0 && a <= 8 ? a : 0;
+}
+// Called after the front end and launcher are ready, before guest initialization. Retry at submission
+// if layout has not supplied the drawable yet. The ratio is fixed for this run, so a present
+// cannot change the projection halfway through a frame. iOS draws behind the Dynamic Island.
+void mtl_widescreen_start(void) {
+    static int done; uint8_t *p = wide_state(); if (!p || done) return;
+    const char *e = getenv("DM_WIDESCREEN");
+    int on = DM_GAME_WIDESCREEN;
+    if (e) {
+        if (!strcmp(e, "0")) on = 0;
+        else if (!strcmp(e, "1")) on = 1;
+        else { MLOG("[RED] DM_WIDESCREEN=%s: must be 0 or 1; using the profile default", e); }
+    }
+    if (!on) { done = 1; return; }
+    CAMetalLayer *layer = (__bridge CAMetalLayer *)front_metal_layer();
+    CGSize size = layer.drawableSize; if (!(size.width > 0 && size.height > 0)) return;
+    float a = nvn_widescreen_ratio(size.width, size.height); uint32_t bits; memcpy(&bits, &a, 4);
+    atomic_store_explicit((_Atomic uint32_t *)p, bits, memory_order_relaxed); done = 1;
+    MLOG("widescreen: camera aspect %.4f (0 = original), drawable %.0fx%.0f", a, size.width, size.height);
+}
+
 static int g_red_once[164];   // one past the highest key: a new key raises this, and the macro refuses to compile otherwise
 #define RED_ONCE(k, ...) do { _Static_assert((k) < sizeof g_red_once / sizeof *g_red_once, "a RED_ONCE key past g_red_once: raise its size"); if (!g_red_once[k]++) MLOG("[RED] " __VA_ARGS__); } while (0)
 // NVN vertex streams 0–15 → Metal vertex buffer slots: 0–13 go to 16–29 (30 is the constant fallback buffer), 14 and 15 to 14 and 15. Metal has only the 31 slots 0–30; translated shaders use only buffer(0) (the argument buffer),
@@ -5285,6 +5316,20 @@ static void attach(MTLRenderPassAttachmentDescriptor *a, const tex_t *t, const v
 // mode 1 (clear_only): a pass opened only to land pending clears, attaching only the attachments that have clears; mode 2: the lookahead proves this pass does not use depth-stencil, so depth is not attached.
 // clear_only: a pass opened only to land pending clears, attaching only the attachments that have clears - the other attachments are not touched by this pass, and attaching them costs a pointless load and store on TBDR
 // (Mac character select screen: the color-clear pass drags along a 400x225 depth load and store)
+// Canvas learning and quad classification adapted from MacNativeGames (MIT;
+// dm/third_party/macnativegames/LICENSE), game_patches_botw.c and nvn_mtl.m.
+static uint64_t g_wide_canvas, g_wide_last_canvas;
+static void wide_canvas_note(MTL4RenderPassDescriptor *pd) {
+    if (!wide_aspect() || !DM_GAME_WIDESCREEN_UI_QUADS || R.rt.n < 1 || !R.rt.color[0]) return;
+    const tex_t *t = R.rt.color[0]; id<MTLTexture> c = pd.colorAttachments[0].texture;
+    if (xv_present(t->serial)) {
+        if (g_wide_last_canvas && g_wide_canvas != g_wide_last_canvas) {
+            g_wide_canvas = g_wide_last_canvas; MLOG("widescreen canvas: texture %llu", g_wide_canvas);
+        }
+    } else if (c.width >= 640 && c.height && fabs((double)c.width / c.height * 9 / 16 - 1) < 0.01 &&
+               pd.colorAttachments[0].level == 0 && c.pixelFormat == MTLPixelFormatRGBA16Float && !pd.depthAttachment.texture)
+        g_wide_last_canvas = t->serial;
+}
 static id<MTL4RenderCommandEncoder> rp_begin_ex(int clear_only);
 static NSUInteger g_rp_aw; static int g_rp_whole;
 static id<MTL4RenderCommandEncoder> rp_begin(void) { if (g_enc && g_rp_aw) rp_end(); g_rp_whole = 1; id<MTL4RenderCommandEncoder> e = rp_begin_ex(0); g_rp_whole = 0; return e; }   // the callers draw anywhere in the target (see g_rp_aw)
@@ -5484,6 +5529,7 @@ static id<MTL4RenderCommandEncoder> rp_begin_ex_(int clear_only) {
         if (!g_vis || g_vis_n >= VIS_SLOTS) { if (g_vis && !vis_in_ring(g_vis)) defer_obj_release(g_vis); g_vis = [g_dev newBufferWithLength:VIS_SLOTS * 8 options:MTLResourceStorageModeShared]; res_add(g_vis); g_vis_n = 0; }
         pd.visibilityResultBuffer = g_vis;
     }
+    wide_canvas_note(pd);
     g_enc_vis = 0; g_enc_has_vis = g_vis_on;
     // Layered rendering: a vertex shader that writes the layer selects the attachment layer per primitive only when the pass has renderTargetArrayLength; without it every layer went to the
     // attached one. Pokémon Legends: Z-A builds its 32x32x32 colour grading LUT this way (b29f08619f379a83, one instance per depth plane) and tone-maps through it: only plane 0 was written and the
@@ -13366,6 +13412,19 @@ static void cs_hoist_try(NvProg *pr0, const p_draw *dw0, const p_draw_idx *di0) 
 void mtl_geomesh_stats(uint64_t *n, uint64_t *wait, uint64_t *run_draws, uint64_t *runs, uint64_t ends[4]) { *n = g_geo_mesh_n; *wait = g_geo_mesh_wait; *run_draws = g_mrun_draws; *runs = g_mrun_runs; memcpy(ends, g_mrun_ends, sizeof g_mrun_ends); }
 void mtl_geohoist_stats(uint64_t *moved, uint64_t *runs, uint64_t *stops) { *moved = g_geo_hoisted; *runs = g_geo_hoist_runs; memset(stops, 0, 6 * sizeof *stops); stops[3] = g_geo_dependency_splits; }
 void mtl_cshoist_stats(uint64_t *moved, uint64_t *depth, uint64_t *stops) { *moved = g_csh_moved; *depth = g_csh_depth; for (int i = 0; i < 8; i++) stops[i] = g_csh_stop[i]; }
+// UI quads keep 16:9 proportions. Scene upscales (triangles), and quads sampling a
+// GPU-rendered 16:9 scene picture, keep the widened camera's full canvas.
+static double wide_ui_factor(const p_draw *dw, const p_draw_idx *di) {
+    double a = wide_aspect();
+    if (!a || !DM_GAME_WIDESCREEN_UI_QUADS || (dw ? dw->count : di ? di->count : 0) != 6 ||
+        R.rt.n < 1 || !R.rt.color[0] || R.rt.color[0]->serial != g_wide_canvas) return 1;
+    int tid = (int)(S.tex[1][0] & 0xfffff);
+    os_unfair_lock_lock(&g_rmu);
+    tex_t t = tid > 0 && tid < g_ntreg && g_treg[tid].ok ? g_treg[tid].t : (tex_t){0};
+    os_unfair_lock_unlock(&g_rmu);
+    if (t.d.width >= 320 && t.d.height && fabs((double)t.d.width / t.d.height * 9 / 16 - 1) < 0.02 && mtl_tex_gpu_owned(t.serial)) return 1;
+    return a / (16.0 / 9.0);
+}
 // Physical color attachments the selected pipeline can write. A merged pass remaps logical outputs and channel masks; a specialized fragment's outputs are unknown here.
 static uint32_t draw_color_writes(NvProg *pr) {
     NvShader *fs = pr ? pr->sh[1] : nil;
@@ -13573,7 +13632,9 @@ static void draw_(const p_draw *dw, const p_draw_idx *di) {
       if (!(g_ed.ok & ED_SREF) || g_ed.sref != sr) { enc_r_stencil_ref(en, sr, sr); g_ed.sref = sr; g_ed.ok |= ED_SREF; } }
     // Viewport / scissor (clamped within the target size)
     NSUInteger tw = g_pass.tw, th = g_pass.th;
+    double wide_ui = wide_ui_factor(dw, di);
     { MTLViewport v = S.has_vp ? (MTLViewport){S.vp[0][0], S.vp[0][1], S.vp[0][2], S.vp[0][3], S.dr[0], S.dr[1]} : (MTLViewport){0, 0, tw, th, 0, 1};
+      if (wide_ui != 1) { v.originX = nvn_widescreen_x(v.originX, tw, wide_ui); v.width /= wide_ui; }
       if (atomic_load_explicit(&g_origin_ll, memory_order_relaxed)) { v.originY += v.height; v.height = -v.height; }   // lower-left origin (see g_origin_ll)
       // Viewport swizzle: NEGATIVE_Y negates clip y, the same as the viewport flipped about its centre; facing is decided after it on the GPU as in Metal, so the winding stays.
       // Other swizzles (axis exchanges, negated x / z / w) are no viewport change and are drawn unswizzled
@@ -13587,6 +13648,10 @@ static void draw_(const p_draw *dw, const p_draw_idx *di) {
         if (x1 > (long)tw) x1 = tw; if (y1 > (long)th) y1 = th;
         if (x1 <= x0 || y1 <= y0) { PD("Z %llu draw skipped: empty scissor (%d,%d %dx%d, target %lux%lu)", g_stat_pass, R.sc.x, R.sc.y, R.sc.w, R.sc.h, (unsigned long)tw, (unsigned long)th); return; }
         sc = (MTLScissorRect){(NSUInteger)x0, (NSUInteger)y0, (NSUInteger)(x1 - x0), (NSUInteger)(y1 - y0)};
+    }
+    if (wide_ui != 1) {
+        double x0 = nvn_widescreen_x(sc.x, tw, wide_ui), x1 = nvn_widescreen_x(sc.x + sc.width, tw, wide_ui);
+        sc.x = (NSUInteger)floor(x0); sc.width = (NSUInteger)ceil(x1) - sc.x;
     }
     if (!(g_ed.ok & ED_SC) || memcmp(&g_ed.sc, &sc, sizeof sc)) { enc_r_scissor(en, sc); g_ed.sc = sc; g_ed.ok |= ED_SC; }
     if (S.poly.cull == NVN_FACE_FRONT_AND_BACK && !S.rast_discard) { PD("Z %llu draw skipped: both faces culled", g_stat_pass); return; }
@@ -15358,6 +15423,7 @@ static id<MTLTexture> present_raw_src(id<MTLTexture> src) {
 // differs from the game's, e.g. iPhone about 19.5:9 against the game's 16:9); when the ratios differ by under 1 % (the remainder from a game width that is a multiple of 8 in the
 // full-screen setup, e.g. 1952x900 against 2868x1320 differs by 0.17 %) the whole canvas, leaving no border of a few pixels
 static MTLViewport present_viewport(double pw, double ph, double dw, double dh) {
+    double a = wide_aspect(); if (a) { pw = ph * a; }   // camera already draws this shape into the original canvas
     double s = fmin(dw / pw, dh / ph);
     MTLViewport vp = {floor((dw - pw * s) / 2), floor((dh - ph * s) / 2), round(pw * s), round(ph * s), 0, 1};
     if (fabs((dw / dh) / (pw / ph) - 1) < 0.01) vp = (MTLViewport){0, 0, dw, dh, 0, 1};

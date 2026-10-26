@@ -16,6 +16,7 @@ static void *req(const char *n){ void *p=guest_sym(n); if(!p) die("missing symbo
 static char *g_argv[64] = {"game"}; static int g_argc = 1;
 
 static void guest_main(void) {
+    { void mtl_widescreen_start(void); mtl_widescreen_start(); }
     guest_thread_init();
     guest_gate_stack(0);   // the guest code runs on this thread's own stack: its SVCs get a stack of their own
     { void dm_oodle_serve_maybe(int); dm_oodle_serve_maybe(0); }   // DM_OODLE_SERVE tool mode: the game's own Oodle decoder over stdin / stdout (hle_oodle.c, exits when the input ends)
