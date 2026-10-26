@@ -1542,7 +1542,7 @@ static double wide_aspect(void) {
 // if layout has not supplied the drawable yet. The ratio is fixed for this run, so a present
 // cannot change the projection halfway through a frame. iOS draws behind the Dynamic Island.
 void mtl_widescreen_start(void) {
-    static int done; uint8_t *p = wide_state(); if (!p || done) return;
+    static _Atomic int done; uint8_t *p = wide_state(); if (!p || atomic_load(&done)) return;   // guest main and the submitting thread both call this
     const char *e = getenv("DM_WIDESCREEN");
     int on = DM_GAME_WIDESCREEN;
     if (e) {
@@ -1550,11 +1550,11 @@ void mtl_widescreen_start(void) {
         else if (!strcmp(e, "1")) on = 1;
         else { MLOG("[RED] DM_WIDESCREEN=%s: must be 0 or 1; using the profile default", e); }
     }
-    if (!on) { done = 1; return; }
+    if (!on) { atomic_store(&done, 1); return; }
     CAMetalLayer *layer = (__bridge CAMetalLayer *)front_metal_layer();
     CGSize size = layer.drawableSize; if (!(size.width > 0 && size.height > 0)) return;
     float a = nvn_widescreen_ratio(size.width, size.height); uint32_t bits; memcpy(&bits, &a, 4);
-    atomic_store_explicit((_Atomic uint32_t *)p, bits, memory_order_relaxed); done = 1;
+    atomic_store_explicit((_Atomic uint32_t *)p, bits, memory_order_relaxed); atomic_store(&done, 1);
     MLOG("widescreen: camera aspect %.4f (0 = original), drawable %.0fx%.0f", a, size.width, size.height);
 }
 
