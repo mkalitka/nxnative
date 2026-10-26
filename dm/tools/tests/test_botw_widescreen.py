@@ -40,7 +40,7 @@ class Widescreen(unittest.TestCase):
                 self.assertEqual('DM_WIDESCREEN' in rows, supported)
                 if supported:
                     self.assertEqual(rows['DM_WIDESCREEN']['default'], '2')
-                    self.assertEqual(rows['DM_WIDESCREEN']['options'], [['2', 'Automatic'], ['1', 'Full screen'], ['0', '16:9']])
+                    self.assertEqual(rows['DM_WIDESCREEN']['options'], [['2', 'Auto'], ['1', 'Full screen'], ['0', '16:9']])
 
     @unittest.skipUnless(platform.system() == 'Darwin' and platform.machine() == 'arm64' and shutil.which('clang'), 'native Apple ARM64 test')
     def test_camera_writer_and_ui_geometry(self):

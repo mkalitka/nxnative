@@ -251,7 +251,7 @@ void front_run(void (*guest)(void)) {
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         NSRect r = NSMakeRect(0, 0, 1280, 720);
         // Camera widescreen (nvn_mtl.m mtl_widescreen_start, which reads the drawable once): the window opens in the shape of its screen's fullscreen area (below a
-        // MacBook's notch: 16:10), 720 points high or less, and keeps that shape when resized or made fullscreen. Automatic (mode 2) takes a screen of 16:10 or wider;
+        // MacBook's notch: 16:10), 720 points high or less, and keeps that shape when resized or made fullscreen. Auto (mode 2) takes a screen of 16:10 or wider;
         // a narrower one (4:3, portrait) would cut too much from the sides, and the window stays 16:9. Full screen (mode 1) takes any
         int mtl_widescreen_mode(void);
         NSScreen *scr = NSScreen.mainScreen;
