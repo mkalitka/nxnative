@@ -89,6 +89,8 @@ Game too big to install? Build again with `--romfs separate`, and run the comman
 
 Controls, saves and settings: [Playing](docs/playing.md).
 
+**Screen shape.** Breath of the Wild 1.9.0 fills the screen instead of showing a 16:9 picture with bars: the camera takes the screen's shape (more of the world at the sides on an iPhone, 16:10 in a MacBook window), and the HUD keeps its original proportions in the middle. **Automatic** (the default) keeps 16:9 on an iPad, where filling the screen would show less at the sides; **Full screen** fills it anyway, and **16:9** restores the original picture. Details: [Screen shape](docs/settings.md#screen-shape).
+
 ### Switch 2 games
 
 A Switch 2 game is built from one [NUP](https://github.com/a55uka/nup) container (a `.nup` file) or a folder of its files, not from NSPs. Neither needs `prod.keys`. A game this project has no profile for is surveyed and gets a provisional profile, as NSPs do ([Port another game](docs/development.md#port-another-game)), which may not boot. You get a Mac app; iPhone and iPad are untested.

@@ -8,6 +8,7 @@
 #import <Metal/Metal.h>
 #import <AVFAudio/AVFAudio.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include "front.h"
 #include "hle.h"
 #include "dm.h"
@@ -28,6 +29,8 @@ bool dm_show_launcher(void *view_controller, void (*done)(void));   // Launcher.
 static CAMetalLayer *g_layer;
 static void front_ios_notify_setup(void);
 static void front_ios_notify_ask(void);
+static _Atomic int g_fill;   // front_fill_screen: 0 = the centred 16:9 game view, 1 = whole screen asked for, 2 = laid out
+static _Atomic int g_fill_narrower;   // a screen narrower than 16:9 (an iPad) is taken too
 static void front_ios_power_watch(void);
 static void front_ios_audio_watch(void);
 static UILabel *front_ios_fps_label(void);
@@ -197,7 +200,10 @@ static void launcher_done(void) { [g_root startGame]; }
     UIEdgeInsets gameInsets = dm_game_safe_insets(b, self.view.safeAreaInsets, duoPortrait);
     BOOL onTV = self.game.superview != self.view;   // the TV's view lays the picture out; the phone is all pad
     DmLayout layout = onTV ? dm_layout_pad_only(b) : dm_layout_picture(dm_layout(b, gameInsets, self.partiallyOpen, division, g_picture_aspect), b, self.fill, g_picture_aspect);
+    double fr = b.size.width / b.size.height / (16.0 / 9.0);   // camera widescreen (front_fill_screen): the whole screen when it is wider than 16:9, or narrower and that was asked for
+    if (!onTV && !layout.separated && atomic_load(&g_fill) != 0 && (fr > 1.01 || (fr < 0.99 && atomic_load(&g_fill_narrower)))) layout.game = b;
     if (!onTV) self.game.frame = layout.game;
+    if (atomic_load(&g_fill)) { [self.game layoutIfNeeded]; atomic_store(&g_fill, 2); }   // the drawable has its new size before mtl_widescreen_start reads it
     layout.topSafeOnly = duoPortrait;
     NSString *line = [NSString stringWithFormat:@"%@, hinge %ld%s, divisions %@, picture %@, controls %@", onTV ? @"pad only (picture on the TV)" : layout.separated ? @"split" : self.fill ? @"overlay, Fill" : @"overlay",
                       (long)self.hingeStatus, self.partiallyOpen ? " (half open)" : "", regionLog, NSStringFromCGRect(layout.game), NSStringFromCGRect(layout.controls)];
@@ -431,6 +437,12 @@ void front_program_handoff(int index, const char *name) {   // front.h; on the g
     if (dispatch_semaphore_wait(added, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC))) LOG("[RED] front end: the notification for program %d was not scheduled within 2 s", index);
     else if (err) LOG("[RED] front end: the notification for program %d could not be scheduled: %s", index, err.localizedDescription.UTF8String);
     else LOG("front end: \"Starting %s\" shown, notification for program %d scheduled", nm.UTF8String, index);
+}
+int front_fill_screen(int narrower) {   // front.h: the game view takes the whole screen when that is not 16:9 (viewDidLayoutSubviews)
+    int was = 0; if (narrower) atomic_store(&g_fill_narrower, 1);
+    if (atomic_compare_exchange_strong(&g_fill, &was, 1))
+        dispatch_async(dispatch_get_main_queue(), ^{ UIView *v = g_root.view; [v setNeedsLayout]; [v layoutIfNeeded]; });
+    return atomic_load(&g_fill) == 2;
 }
 void front_run(void (*guest)(void)) { guest(); }   // Already on main.m's big-stack thread
 
