@@ -199,6 +199,7 @@ static void read_layout(module_t *m, const char *dir) {
         else if (!strcmp(key, "TEXT_END")) m->text_end = v;
         else if (!strcmp(key, "RO_OFF")) m->ro_off = v;
         else if (!strcmp(key, "DATA_OFF")) m->data_off = v;
+        else if (!strcmp(key, "WIDESCREEN")) m->widescreen = v == 1;
         else if (!strcmp(key, "FPS_STATE_OFF")) m->fps_state_off = v;
         else if (!strcmp(key, "BUILD_ID")) sscanf(line, "# %*s %32s", m->build_id);
         else for (int k = 0; k < KEY_N; k++) {
@@ -219,10 +220,12 @@ static void read_layout(module_t *m, const char *dir) {
 // target, 0 = the game's own interval logic. The profile's fps_target, overridden by DM_FPS_TARGET (0, 30 or 60); the graphics layer decides the steps and paces presents
 // (hle_nvn.c fstep_tick)
 uint8_t *dm_fps_state;
+uint8_t *dm_widescreen_state;   // non-NULL only with a build-checked camera aspect stub
 static const char *g_fps_mod;   // the module holding the state page (for the log)
 static void install_fps_state(module_t *m) {
     if (m->fps_state_off + 0x40 > m->size || m->fps_state_off < m->key_page_off + m->key_page_size) die("%s: frame step state page out of range", m->name);
     dm_fps_state = m->base + m->fps_state_off; g_fps_mod = m->name;
+    if (m->widescreen) dm_widescreen_state = dm_fps_state + 0x38;
 }
 // The settings in the state page, written when the game starts (main.c, after host loading): on iOS the loading runs at app launch, before the launcher has set DM_FPS_TARGET and
 // DM_RENDER_SCALE (Launcher.swift), and nothing reads the page before the game runs

@@ -109,5 +109,34 @@ def frame_step(ctx):
         emit(w)
     emit(B(here(), 0x1266880)); emit(B(here(), 0x1266950))   # apply the host's scale; skip: the original branch
     fs_put(0x126686c, [B(0x126686c, start)], 'scale apply block taken every frame when the host render scale is not 1.0')
+    widescreen(ctx)
+
+
+def widescreen(ctx):
+    # MacNativeGames game_patches_botw.c (a8807a1a, MIT): 1.9.0 writes the camera aspect
+    # every world frame. Patch that writer, rather than racing it from the present thread.
+    # Check the entire straight run, including the register/field assumptions. x8/x9,
+    # s1..s3 and flags are dead here. Keep the original ratio when state +0x38 is zero.
+    at = 0x10edae0
+    original = [0xbd406e80, 0x39006276, 0xbd00aa60, 0xbd407280, 0x39006276,
+                0xbd00ae60, 0x2d4806a0, 0x2d470ea2, 0x39006276, 0x1e233821,
+                0x1e223800, 0x1e211800, 0xbd00c260]
+    ctx.site(at, struct.pack('<13I', *original).hex())
+    start = ctx.here()
+    for word in (0x39006276,   # strb w22,[x19,#0x18]     projection dirty
+                 0x294da688,   # ldp w8,w9,[x20,#0x6c]   near, far
+                 0x29152668,   # stp w8,w9,[x19,#0xa8]
+                 *original[6:8], *original[9:12]):  # layer rectangle width / height
+        ctx.emit(word)
+    ctx.emit(ADRP(8, ctx.here(), ctx.state))
+    for word in (0xbd403901,   # ldr s1,[x8,#0x38]       requested aspect (0 = original)
+                 0x1e202028,   # fcmp s1,#0.0
+                 0x1e20cc20,   # fcsel s0,s1,s0,gt
+                 0xbd00c260,   # str s0,[x19,#0xc0]      camera aspect
+                 0xbd003d01):  # str s1,[x8,#0x3c]       applied aspect, for the presenter
+        ctx.emit(word)
+    ctx.emit(B(ctx.here(), at + 4 * len(original)))
+    ctx.put(at, [B(at, start)], 'camera aspect from the host (0 = original); publish after the camera writer')
+    ctx.widescreen = 1
 
 FRAME_STEP = {'cd57b23fa4bbad65803d9788c01821ee': frame_step}

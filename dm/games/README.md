@@ -34,6 +34,19 @@ None of them has a default game: without one they stop and list the profiles. To
 
 Defaults may use `<ios>|<mac>` to select the platform's value before resolving a profile macro or build variable. For example, `DM_GAME_PSO_MTL4|1` follows the profile on iOS and the Mac host's always-on default on Mac; `1|0` matches the encode thread's iOS-on, Mac-off defaults. `SETTINGS_PLATFORM` accepts `ios` (the default) or `mac`; other values are rejected.
 
+### Camera widescreen profiles
+
+`widescreen on|off` sets the default of `DM_WIDESCREEN` (default `off`). It takes
+effect only when the rewritten main includes `WIDESCREEN`, emitted by a profile's
+build-checked camera stub (`ctx.widescreen = 1` in `FRAME_STEP`). The stub reads
+the requested float aspect at state +0x38 (0 = original) and publishes the applied
+aspect at +0x3c; the host uses only the applied value to widen presentation.
+`widescreen_ui none|quads` chooses UI correction (default `none`). `quads` keeps
+six-vertex/index canvas draws centered at 16:9 except GPU-rendered scene pictures;
+it requires the game's canvas/draw assumptions to be verified. Currently only
+[Breath of the Wild 1.9.0](01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open)
+uses these keys. [Shared mechanism](../../docs/reference/rendering.md#camera-widescreen-profiles).
+
 ## Games
 
 One row per profile; the notes are each profile's `README.md`.

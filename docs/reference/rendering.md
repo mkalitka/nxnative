@@ -898,3 +898,25 @@ Digimon Story Cyber Sleuth: Complete Edition (Media.Vision's MVGL engine, SDK 6.
 ### GL movies decoded by the SDK's movie library
 
 - **Found on:** [Digimon Story Cyber Sleuth: Complete Edition](../../dm/games/010014E00DB56000/README.md): the USM movies' H.264 is decoded through the SDK's movie library (the host's decoder) into NV12 buffers (3,110,400 bytes a 1920x1080 frame); the game uploads the planes into a `GL_RED` and a `GL_RG` texture (two `glTexSubImage2D` a frame) and converts YUV in its own shader (in `main`, `SamplerY` / `SamplerUV`).
+
+
+### Camera widescreen profiles
+
+- **Symptom:** a 16:9 game has side bars on an iPhone's wider display.
+- **Cause:** the game's projection and canvas use 16:9. Widening only the present
+  stretches the world and HUD; cropping cuts off the HUD.
+- **Fix:** a build-checked profile camera stub reads a float aspect from its state
+  page (+0x38 requested, +0x3c applied; 0 means original), and emits `WIDESCREEN`
+  in the fixups. The loader exposes that page only for such a build. After the
+  launcher and front end are ready, `mtl_widescreen_start` takes the drawable's
+  ratio once (only wider than 16:9), honoring `DM_WIDESCREEN` / the profile's
+  `widescreen` default. The presenter fits the **applied** ratio to its output in
+  both standard and MetalFX paths. An absent stub keeps the normal present.
+  `widescreen_ui quads` learns the depthless float canvas before the swapchain
+  pass and narrows its six-element UI draws and scissors about the canvas centre.
+  Fullscreen triangles and quads sampling a GPU-rendered scene picture keep the
+  whole width. This draw rule is game-specific knowledge in the profile, not a
+  generic rule for every NVN game. No render-target allocation sizes change.
+- **Found on:** [Breath of the Wild 1.9.0](../../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open).
+  Adapted from MacNativeGames `a8807a1a` (MIT). Synthetic ARM64 and presentation
+  checks cover the mechanism; game/device validation remains open.

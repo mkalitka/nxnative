@@ -17,6 +17,41 @@ Update 1.9.0 (v1114112) over the base game, SDK 20.5.22. Nintendo EPD's engine (
 
 No `tex_flush_upload` (a minute's boot saw it flush 32 CPU-filled textures with data, and it needs none), no `feedback_snap`.
 
+## Full screen (implemented, gameplay validation open)
+
+Issue [#93](https://github.com/seedds/nxnative/issues/93). On the supported 1.9.0 main
+(`cd57b23fa4bbad65803d9788c01821ee`), `widescreen on` defaults to **Full screen**.
+The camera takes the drawable's landscape ratio on a display wider than 16:9; a
+16:9 screen or an iPad keeps the original view. The ratio is fixed at startup.
+The launcher offers **16:9** to restore the original picture (`DM_WIDESCREEN=0`
+also works in `Documents/env.txt`). The game draws behind the Dynamic Island.
+
+This adapts [MacNativeGames' BOTW camera writer and UI correction](https://github.com/ly05010419/MacNativeGames/blob/a8807a1a3098a1ec1ec6698932bdf92d9635f5e5/games/totk/runtime/game_patches_botw.c#L922)
+(MIT). The existing 16:9 buffers carry the wider camera view; the present restores
+its proportions over the wider display. Render/output dimensions, texture pools
+and the render-scale setting stay as before. The HUD remains centered at its
+original proportions, rather than being moved to the phone's corners.
+
+The camera rewrites its aspect every world frame. `patches.py` checks all 13 words
+at `main+0x10edae0` before redirecting the writer: near/far, dirty flag and the
+layer rectangle calculation are preserved; the aspect comes from state +0x38
+when positive, otherwise from the rectangle. The writer publishes the applied
+aspect at +0x3c. Only this build emits `WIDESCREEN` in its fixups; the loader and
+launcher require that marker. An unregistered update cannot acquire fullscreen
+presentation from the profile default alone. Details of the shared path:
+[Camera widescreen profiles](../../../docs/reference/rendering.md#camera-widescreen-profiles).
+
+**Validation:** the emitted ARM64 body runs against synthetic camera objects on
+the Mac, including repeated frames and restoring 16:9; near/far, dirty flag,
+aspect and publication are checked. Launcher gating/defaults and HUD geometry
+have regression checks. This does **not** establish visual correctness in BOTW.
+No game files or device run were available for this change. Validate title →
+world, both console modes, shrines, inventory (including Link), map, menus,
+cutscenes/movies, world markers and extended play on iPhone before calling it
+play-tested. MacNativeGames reports centered map bars and uncorrected world
+markers; the same limitations may remain here. The first canvas is learned from
+render passes, so its initial frames also need visual inspection.
+
 ## Frame rate
 
 ### The frame step (current)
@@ -187,6 +222,8 @@ Before publishing, the fixes were integrated with main's pipeline archive and GP
 - **Resolved build guard and cache isolation; rendering cause open:** [Tested tools and compiler-specific shader caches](../../../docs/reference/shaders.md#tested-tools-and-compiler-specific-shader-caches).
 
 General host changes first needed here; each applies to every game:
+
+- [Camera widescreen profiles](../../../docs/reference/rendering.md#camera-widescreen-profiles): build-gated camera aspect and presentation, with a profile-selected UI correction; gameplay validation open.
 
 - **Shared performance work, checked independently of prewarm data:** [CPU deswizzle copies use slice and row offsets](../../../docs/reference/nvn-objects.md#cpu-deswizzle-copies-use-slice-and-row-offsets) and [Host symbol indexes avoid repeated name scans](../../../docs/reference/services.md#host-symbol-indexes-avoid-repeated-name-scans). [PR #261](https://github.com/seedds/nxnative/pull/261) reports M2 iPad Pro gameplay on update 1.9.0; local verification covers synthetic correctness and CPU microbenchmarks, without a new game/device run.
 - **Final #158/#213 gameplay validation:** [Current results](#final-synchronization-and-pass-validation-2026-10-26-current) distinguish the retained pass savings from the timing gains not demonstrated on this Mac.

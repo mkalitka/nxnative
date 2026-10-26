@@ -60,12 +60,29 @@ static void check(id<MTLTexture> src, const char *name, const int crop[4], int w
 }
 
 int main(void) { @autoreleasepool {
+    // The applied camera aspect, not the requested setting, controls presentation.
+    _Alignas(4) float wide_state_test[2] = {2868.0f / 1320, 0};
+    dm_widescreen_state = (uint8_t *)wide_state_test;
+    MTLViewport vp = present_viewport(1920,1080,2868,1320);
+    EXPECT("camera has not applied wide: bars",1,vp.originX>0);
+    wide_state_test[1] = wide_state_test[0];
+    vp = present_viewport(1920,1080,2868,1320);
+    EXPECT("applied wide camera: full display width",2868,(int)vp.width);
+    EXPECT("applied wide camera: full display height",1320,(int)vp.height);
+    EXPECT("applied wide camera: no side bars",0,(int)vp.originX);
+    wide_state_test[1] = 0;
+    vp = present_viewport(1920,1080,2868,1320);
+    EXPECT("16:9 restores bars",1,vp.originX>0);
+    dm_widescreen_state = NULL;
     mtl_init();
     MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:8 height:8 mipmapped:NO];d.storageMode=MTLStorageModeShared;d.usage=MTLTextureUsageShaderRead;
     id<MTLTexture> src=[g_dev newTextureWithDescriptor:d];uint8_t px[8*8*4];
     for(int y=0;y<8;y++)for(int x=0;x<8;x++)memcpy(px+4*(y*8+x),colors[(x>=4)+2*(y>=4)],4);
     [src replaceRegion:MTLRegionMake2D(0,0,8,8) mipmapLevel:0 withBytes:px bytesPerRow:32];
     int zero[4]={0},tl[4]={0,0,4,4},tr[4]={4,0,4,4},bl[4]={0,4,4,4},br[4]={4,4,4,4},one[4]={3,3,1,1},inset[4]={1,1,4,4};
+    wide_state_test[0] = wide_state_test[1] = 2.0f; dm_widescreen_state = (uint8_t *)wide_state_test;
+    check(src,"wide camera: crop fills every output pixel",tl,16,8,0);
+    dm_widescreen_state = NULL;
     check(src,"default whole frame 64 pixels",zero,8,8,-1);
     check(src,"NULL default whole frame 64 pixels",NULL,8,8,-1);
     check(src,"top-left crop scaled up, 256 pixels all red",tl,16,16,0);
