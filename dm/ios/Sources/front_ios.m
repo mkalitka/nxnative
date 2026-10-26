@@ -5,6 +5,7 @@
 #import <Metal/Metal.h>
 #import <AVFAudio/AVFAudio.h>
 #include <errno.h>
+#include <stdatomic.h>
 #include "front.h"
 #include "hle.h"
 #include "dm.h"
@@ -17,6 +18,8 @@ int front_ios_boot_ok(void);
 bool dm_show_launcher(void *view_controller, void (*done)(void));   // Launcher.swift: false = no launcher (no dm/launcher.json, or DM_LAUNCHER=0)
 
 static CAMetalLayer *g_layer;
+static _Atomic int g_fill;   // front_fill_screen: 0 = the centred 16:9 game view, 1 = whole screen asked for, 2 = laid out
+static _Atomic int g_fill_narrower;   // a screen narrower than 16:9 (an iPad) is taken too
 static void front_ios_power_watch(void);
 static void front_ios_audio_watch(void);
 static UILabel *front_ios_fps_label(void);
@@ -85,9 +88,12 @@ static void launcher_done(void) { [g_root startGame]; }
 - (void)viewDidLayoutSubviews {
     [super viewDidLayoutSubviews];
     CGRect b = self.view.bounds; if (!self.game) return;
-    CGFloat w = b.size.width, h = b.size.height;   // Fit 16:9 into the whole screen
-    if (w / h > 16.0 / 9.0) w = h * 16.0 / 9.0; else h = w * 9.0 / 16.0;
+    CGFloat w = b.size.width, h = b.size.height;   // Fit 16:9 into the whole screen; the whole screen when it is wider and the camera widens (front_fill_screen)
+    double r = w / h / (16.0 / 9.0);
+    int fill = atomic_load(&g_fill) != 0 && (r > 1.01 || (r < 0.99 && atomic_load(&g_fill_narrower)));
+    if (!fill) { if (w / h > 16.0 / 9.0) w = h * 16.0 / 9.0; else h = w * 9.0 / 16.0; }
     self.game.frame = CGRectMake(floor((b.size.width - w) / 2), floor((b.size.height - h) / 2), w, h);
+    if (atomic_load(&g_fill)) { [self.game layoutIfNeeded]; atomic_store(&g_fill, 2); }   // the drawable has its new size before mtl_widescreen_start reads it
     if (self.fps) {   // the top row's free stretch: right of DmGamepad.m's L3 key (102 + 17 of its units from the safe edge), level with − / + (22 units down); u is its unit
         CGRect s = UIEdgeInsetsInsetRect(b, self.view.safeAreaInsets); CGFloat u = MIN(b.size.height / 430.0, 1.3);
         self.fps.frame = CGRectMake(floor(CGRectGetMinX(s) + 130 * u), floor(CGRectGetMinY(s) + 22 * u - 11), 64, 22);
@@ -169,6 +175,12 @@ void front_progress(const char *title, long done, long total) {
     });
 }
 void *front_metal_layer(void) { return (__bridge void *)g_layer; }
+int front_fill_screen(int narrower) {   // front.h: the game view takes the whole screen when that is not 16:9 (viewDidLayoutSubviews)
+    int was = 0; if (narrower) atomic_store(&g_fill_narrower, 1);
+    if (atomic_compare_exchange_strong(&g_fill, &was, 1))
+        dispatch_async(dispatch_get_main_queue(), ^{ UIView *v = g_root.view; [v setNeedsLayout]; [v layoutIfNeeded]; });
+    return atomic_load(&g_fill) == 2;
+}
 void front_run(void (*guest)(void)) { guest(); }   // Already on main.m's big-stack thread
 
 // Software keyboard: show a UIAlertController on the main thread, the calling thread waits for the result

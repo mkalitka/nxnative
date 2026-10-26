@@ -9,6 +9,7 @@ Update 1.9.0 (v1114112) over the base game, SDK 20.5.22. Nintendo EPD's engine (
 | Frame step, `fps_target 60` | [`patches.py`](patches.py) `FRAME_STEP` (`main` `cd57b23f…`), [`game.tsv`](game.tsv) | 60 fps at normal speed; see [Frame rate](#frame-rate) |
 | Interval controller floor 2 → 1 (five cuts) and GPU-time path (two cuts) | `patches.py` `CUTS` | the game's own controller at `DM_FPS_TARGET=0` and while its VFR override holds; see [The game's own interval controller](#the-games-own-interval-controller) |
 | Render scale stubs | `patches.py` `frame_step` (`main+0x1266880`, `main+0x126686c`) | `DM_RENDER_SCALE`; see [Render scale](#render-scale) |
+| Camera aspect stub, `widescreen auto`, `widescreen_ui quads` | `patches.py` `widescreen` (`main+0x10edae0`), `game.tsv` | the camera takes the screen's shape with the HUD a centred 16:9; see [Full screen](#full-screen-implemented-gameplay-validation-open) |
 | `gpu_timestamps segment` | `game.tsv` | the interval controller and the dynamic resolution read the GPU time between the frame's two timestamp reports |
 | Integer output rows `8e2cc2671cae6020`, `93aa5e22a8202409` | [`shader_facts_manual.tsv`](shader_facts_manual.tsv) | agl's BC4 block encoder (3D and 2D source) writes `uint`; no PC version gives output types |
 | `pad_layout full` | `game.tsv` | the 3D gamepad layout: the right stick turns the camera |
@@ -19,38 +20,13 @@ No `tex_flush_upload` (a minute's boot saw it flush 32 CPU-filled textures with 
 
 ## Full screen (implemented, gameplay validation open)
 
-Issue [#93](https://github.com/seedds/nxnative/issues/93). On the supported 1.9.0 main
-(`cd57b23fa4bbad65803d9788c01821ee`), `widescreen on` defaults to **Full screen**.
-The camera takes the drawable's landscape ratio on a display wider than 16:9; a
-16:9 screen or an iPad keeps the original view. The ratio is fixed at startup.
-The launcher offers **16:9** to restore the original picture (`DM_WIDESCREEN=0`
-also works in `Documents/env.txt`). The game draws behind the Dynamic Island.
+Issue [#93](https://github.com/seedds/nxnative/issues/93). On the supported 1.9.0 main (`cd57b23fa4bbad65803d9788c01821ee`), `widescreen auto` defaults to **Automatic**: the camera takes the drawable's ratio when it differs from 16:9 (an iPhone's wider screen, a Mac window opened in its screen's shape, 16:10 on a MacBook), and an iPad or a Mac screen narrower than 16:10 keeps the original view. The projection keeps its vertical field of view, so a narrower screen shows less at the sides; **Full screen** accepts that on an iPad too. The ratio is fixed at startup. **16:9** restores the original picture (`DM_WIDESCREEN=0`; `1` full screen, `2` automatic, also in `Documents/env.txt`). On an iPhone the game draws behind the Dynamic Island.
 
-This adapts [MacNativeGames' BOTW camera writer and UI correction](https://github.com/ly05010419/MacNativeGames/blob/a8807a1a3098a1ec1ec6698932bdf92d9635f5e5/games/totk/runtime/game_patches_botw.c#L922)
-(MIT). The existing 16:9 buffers carry the wider camera view; the present restores
-its proportions over the wider display. Render/output dimensions, texture pools
-and the render-scale setting stay as before. The HUD remains centered at its
-original proportions, rather than being moved to the phone's corners.
+This adapts [MacNativeGames' BOTW camera writer and UI correction](https://github.com/ly05010419/MacNativeGames/blob/a8807a1a3098a1ec1ec6698932bdf92d9635f5e5/games/totk/runtime/game_patches_botw.c#L922) (MIT). The existing 16:9 buffers carry the wider camera view; the present restores its proportions over the wider display. Render/output dimensions, texture pools and the render-scale setting stay as before. The HUD remains centered at its original proportions, rather than being moved to the phone's corners.
 
-The camera rewrites its aspect every world frame. `patches.py` checks all 13 words
-at `main+0x10edae0` before redirecting the writer: near/far, dirty flag and the
-layer rectangle calculation are preserved; the aspect comes from state +0x38
-when positive, otherwise from the rectangle. The writer publishes the applied
-aspect at +0x3c. Only this build emits `WIDESCREEN` in its fixups; the loader and
-launcher require that marker. An unregistered update cannot acquire fullscreen
-presentation from the profile default alone. Details of the shared path:
-[Camera widescreen profiles](../../../docs/reference/rendering.md#camera-widescreen-profiles).
+The camera rewrites its aspect every world frame. `patches.py` checks all 13 words at `main+0x10edae0` before redirecting the writer: near/far, dirty flag and the layer rectangle calculation are preserved; the aspect comes from state +0x38 when positive, otherwise from the rectangle. The writer publishes the applied aspect at +0x3c. Only this build emits `WIDESCREEN` in its fixups; the loader and launcher require that marker. An unregistered update cannot acquire fullscreen presentation from the profile default alone. Details of the shared path: [Camera widescreen profiles](../../../docs/reference/rendering.md#camera-widescreen-profiles).
 
-**Validation:** the emitted ARM64 body runs against synthetic camera objects on
-the Mac, including repeated frames and restoring 16:9; near/far, dirty flag,
-aspect and publication are checked. Launcher gating/defaults and HUD geometry
-have regression checks. This does **not** establish visual correctness in BOTW.
-No game files or device run were available for this change. Validate title →
-world, both console modes, shrines, inventory (including Link), map, menus,
-cutscenes/movies, world markers and extended play on iPhone before calling it
-play-tested. MacNativeGames reports centered map bars and uncorrected world
-markers; the same limitations may remain here. The first canvas is learned from
-render passes, so its initial frames also need visual inspection.
+**Validation:** the emitted ARM64 body runs against synthetic camera objects on the Mac, including repeated frames and restoring 16:9; near/far, dirty flag, aspect and publication are checked. Launcher gating/defaults and HUD geometry have regression checks. This does **not** establish visual correctness in BOTW. No game files or device run were available for this change. Validate title → world, both console modes, shrines, inventory (including Link), map, menus, cutscenes/movies, world markers and extended play on iPhone before calling it play-tested. MacNativeGames reports centered map bars and uncorrected world markers; the same limitations may remain here. The first canvas is learned from render passes, so its initial frames also need visual inspection.
 
 ## Frame rate
 
@@ -224,7 +200,6 @@ Before publishing, the fixes were integrated with main's pipeline archive and GP
 General host changes first needed here; each applies to every game:
 
 - [Camera widescreen profiles](../../../docs/reference/rendering.md#camera-widescreen-profiles): build-gated camera aspect and presentation, with a profile-selected UI correction; gameplay validation open.
-
 - **Shared performance work, checked independently of prewarm data:** [CPU deswizzle copies use slice and row offsets](../../../docs/reference/nvn-objects.md#cpu-deswizzle-copies-use-slice-and-row-offsets) and [Host symbol indexes avoid repeated name scans](../../../docs/reference/services.md#host-symbol-indexes-avoid-repeated-name-scans). [PR #261](https://github.com/seedds/nxnative/pull/261) reports M2 iPad Pro gameplay on update 1.9.0; local verification covers synthetic correctness and CPU microbenchmarks, without a new game/device run.
 - **Final #158/#213 gameplay validation:** [Current results](#final-synchronization-and-pass-validation-2026-10-26-current) distinguish the retained pass savings from the timing gains not demonstrated on this Mac.
 

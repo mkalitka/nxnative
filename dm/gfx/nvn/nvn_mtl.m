@@ -1536,26 +1536,34 @@ static uint8_t *wide_state(void) { return dm_widescreen_state; }
 static double wide_aspect(void) {
     uint8_t *p = wide_state(); if (!p) return 0;
     uint32_t bits = atomic_load_explicit((_Atomic uint32_t *)(p + 4), memory_order_relaxed);
-    float a; memcpy(&a, &bits, 4); return a > 16.0 / 9.0 && a <= 8 ? a : 0;
+    float a; memcpy(&a, &bits, 4); return nvn_widescreen_ratio(a, 1);
 }
-// Called after the front end and launcher are ready, before guest initialization. Retry at submission
-// if layout has not supplied the drawable yet. The ratio is fixed for this run, so a present
-// cannot change the projection halfway through a frame. iOS draws behind the Dynamic Island.
-void mtl_widescreen_start(void) {
-    static _Atomic int done; uint8_t *p = wide_state(); if (!p || atomic_load(&done)) return;   // guest main and the submitting thread both call this
-    const char *e = getenv("DM_WIDESCREEN");
-    int on = DM_GAME_WIDESCREEN;
+__attribute__((weak)) int front_fill_screen(int narrower) { (void)narrower; return 1; }   // the front ends' (front.h); none in the unit tests
+// DM_WIDESCREEN, else the profile's widescreen: 0 = 16:9, 1 = full screen, 2 = automatic: full screen on a screen wider than 16:9, on a narrower one only where the front end
+// takes it (a Mac screen of 16:10 or wider; an iPad keeps the original view, as the camera shows less at the sides there). 0 without a build-checked camera stub
+int mtl_widescreen_mode(void) {
+    if (!wide_state()) return 0;
+    const char *e = getenv("DM_WIDESCREEN"); int m = DM_GAME_WIDESCREEN;
     if (e) {
-        if (!strcmp(e, "0")) on = 0;
-        else if (!strcmp(e, "1")) on = 1;
-        else { MLOG("[RED] DM_WIDESCREEN=%s: must be 0 or 1; using the profile default", e); }
+        if (!strcmp(e, "0") || !strcmp(e, "1") || !strcmp(e, "2")) m = *e - '0';
+        else { static int told; if (!told++) MLOG("[RED] DM_WIDESCREEN=%s: must be 0, 1 or 2; using the profile default", e); }
     }
-    if (!on) { atomic_store(&done, 1); return; }
+    return m;
+}
+// Called after the front end and launcher are ready, before guest initialization (guest main), and at each submission until it has decided: once the front end has given
+// the game view the whole screen (front_fill_screen: iOS lays it out 16:9 otherwise) and layout has supplied the drawable. The ratio is fixed for this run, so a present cannot
+// change the projection halfway through a frame. iOS draws behind the Dynamic Island
+void mtl_widescreen_start(void) {
+    static _Atomic int done, mode = -1; uint8_t *p = wide_state(); if (!p || atomic_load(&done)) return;   // guest main and the submitting thread both call this
+    int m = atomic_load(&mode); if (m < 0) { m = mtl_widescreen_mode(); atomic_store(&mode, m); }   // the environment read once (DM_CTL env may set it while a submission runs)
     CAMetalLayer *layer = (__bridge CAMetalLayer *)front_metal_layer();
+    if (!m || !layer) { if (!atomic_exchange(&done, 1)) MLOG("widescreen: the original 16:9 view (%s)", m ? "no window" : "DM_WIDESCREEN / profile widescreen off"); return; }
+    if (!front_fill_screen(m == 1)) return;
     CGSize size = layer.drawableSize; if (!(size.width > 0 && size.height > 0)) return;
     float a = nvn_widescreen_ratio(size.width, size.height); uint32_t bits; memcpy(&bits, &a, 4);
-    atomic_store_explicit((_Atomic uint32_t *)p, bits, memory_order_relaxed); atomic_store(&done, 1);
-    MLOG("widescreen: camera aspect %.4f (0 = original), drawable %.0fx%.0f", a, size.width, size.height);
+    if (atomic_exchange(&done, 1)) return;
+    atomic_store_explicit((_Atomic uint32_t *)p, bits, memory_order_relaxed);
+    MLOG("widescreen: camera aspect %.4f (0 = original), drawable %.0fx%.0f, mode %d", a, size.width, size.height, m);
 }
 
 static int g_red_once[121];
@@ -3150,8 +3158,9 @@ static void wide_canvas_note(MTL4RenderPassDescriptor *pd) {
     if (!wide_aspect() || !DM_GAME_WIDESCREEN_UI_QUADS || R.rt.n < 1 || !R.rt.color[0]) return;
     const tex_t *t = R.rt.color[0]; id<MTLTexture> c = pd.colorAttachments[0].texture;
     if (xv_present(t->serial)) {
-        if (g_wide_last_canvas && g_wide_canvas != g_wide_last_canvas) {
-            g_wide_canvas = g_wide_last_canvas; MLOG("widescreen canvas: texture %llu", g_wide_canvas);
+        if (g_wide_last_canvas && g_wide_canvas != g_wide_last_canvas) {   // logged at the first changes, then every 600th (a canvas that alternates would change every frame)
+            static unsigned changes; g_wide_canvas = g_wide_last_canvas;
+            if (++changes <= 8 || changes % 600 == 0) MLOG("widescreen canvas: texture %llu (change %u)", g_wide_canvas, changes);
         }
     } else if (c.width >= 640 && c.height && fabs((double)c.width / c.height * 9 / 16 - 1) < 0.01 &&
                pd.colorAttachments[0].level == 0 && c.pixelFormat == MTLPixelFormatRGBA16Float && !pd.depthAttachment.texture)
@@ -8718,8 +8727,8 @@ static void cs_hoist_try(NvProg *pr0, const p_draw *dw0, const p_draw_idx *di0) 
     { static int once; if (moved && !once++) MLOG("compute dispatches moved ahead of the render pass they would split (DM_NVN_CS_HOIST): first case pass %llu, %d dispatches", g_stat_pass + 1, moved); }
 }
 void mtl_cshoist_stats(uint64_t *moved, uint64_t *depth, uint64_t *stops) { *moved = g_csh_moved; *depth = g_csh_depth; for (int i = 0; i < 8; i++) stops[i] = g_csh_stop[i]; }
-// UI quads keep 16:9 proportions. Scene upscales (triangles), and quads sampling a
-// GPU-rendered 16:9 scene picture, keep the widened camera's full canvas.
+// UI quads keep 16:9 proportions: the factor is the camera aspect over 16:9 (> 1 narrows the HUD, < 1 flattens it).
+// Scene upscales (triangles), and quads sampling a GPU-rendered 16:9 scene picture, keep the camera's full canvas.
 static double wide_ui_factor(const p_draw *dw, const p_draw_idx *di) {
     double a = wide_aspect();
     if (!a || !DM_GAME_WIDESCREEN_UI_QUADS || (dw ? dw->count : di ? di->count : 0) != 6 ||
@@ -8866,7 +8875,8 @@ static void draw(const p_draw *dw, const p_draw_idx *di) {
     NSUInteger tw = g_pass.tw, th = g_pass.th;
     double wide_ui = wide_ui_factor(dw, di);
     { MTLViewport v = S.has_vp ? (MTLViewport){S.vp[0][0], S.vp[0][1], S.vp[0][2], S.vp[0][3], S.dr[0], S.dr[1]} : (MTLViewport){0, 0, tw, th, 0, 1};
-      if (wide_ui != 1) { v.originX = nvn_widescreen_x(v.originX, tw, wide_ui); v.width /= wide_ui; }
+      if (wide_ui > 1) { v.originX = nvn_widescreen_x(v.originX, tw, wide_ui); v.width /= wide_ui; }   // wider screen: the HUD narrowed to the middle 16:9
+      else if (wide_ui < 1) { v.originY = nvn_widescreen_x(v.originY, th, 1 / wide_ui); v.height *= wide_ui; }   // narrower: flattened to a 16:9 band across the width
       if (atomic_load_explicit(&g_origin_ll, memory_order_relaxed)) { v.originY += v.height; v.height = -v.height; }   // lower-left origin (see g_origin_ll)
       // Viewport swizzle: NEGATIVE_Y negates clip y, the same as the viewport flipped about its centre; facing is decided after it on the GPU as in Metal, so the winding stays.
       // Other swizzles (axis exchanges, negated x / z / w) are no viewport change and are drawn unswizzled
@@ -8881,9 +8891,12 @@ static void draw(const p_draw *dw, const p_draw_idx *di) {
         if (x1 <= x0 || y1 <= y0) { PD("Z %llu draw skipped: empty scissor (%d,%d %dx%d, target %lux%lu)", g_stat_pass, R.sc.x, R.sc.y, R.sc.w, R.sc.h, (unsigned long)tw, (unsigned long)th); return; }
         sc = (MTLScissorRect){(NSUInteger)x0, (NSUInteger)y0, (NSUInteger)(x1 - x0), (NSUInteger)(y1 - y0)};
     }
-    if (wide_ui != 1) {
+    if (wide_ui > 1) {
         double x0 = nvn_widescreen_x(sc.x, tw, wide_ui), x1 = nvn_widescreen_x(sc.x + sc.width, tw, wide_ui);
         sc.x = (NSUInteger)floor(x0); sc.width = (NSUInteger)ceil(x1) - sc.x;
+    } else if (wide_ui < 1) {
+        double y0 = nvn_widescreen_x(sc.y, th, 1 / wide_ui), y1 = nvn_widescreen_x(sc.y + sc.height, th, 1 / wide_ui);
+        sc.y = (NSUInteger)floor(y0); sc.height = (NSUInteger)ceil(y1) - sc.y;
     }
     if (!(g_ed.ok & ED_SC) || memcmp(&g_ed.sc, &sc, sizeof sc)) { enc_r_scissor(en, sc); g_ed.sc = sc; g_ed.ok |= ED_SC; }
     if (S.poly.cull == NVN_FACE_FRONT_AND_BACK && !S.rast_discard) { PD("Z %llu draw skipped: both faces culled", g_stat_pass); return; }

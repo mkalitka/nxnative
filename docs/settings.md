@@ -29,12 +29,7 @@ The size of the 3D picture, from 50 to 100 %. Below 100 % the size is fixed ther
 
 ### Screen shape
 
-Breath of the Wild 1.9.0 defaults to **Full screen** on a wide display: the camera
-shows more at the sides, with the HUD centered at its original proportions.
-**16:9** restores the original view and side bars. The picture draws behind the
-Dynamic Island. iPads keep the original 16:9 view. This setting is offered only
-for a game build with a camera patch. Gameplay validation of this new default is
-[still open](../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open).
+Breath of the Wild 1.9.0 fills the screen: the camera takes the screen's shape, with the HUD centered at its original proportions. On an iPhone it shows more at the sides and draws behind the Dynamic Island. **Automatic** (the default) does this everywhere except on an iPad, which keeps 16:9: there the camera would show less at the sides. **Full screen** fills an iPad too; **16:9** restores the original view and bars. On a Mac the window opens in the screen's shape (16:10 on a MacBook, a little less at the sides than 16:9; Automatic keeps 16:9 on a screen narrower than 16:10); `DM_WIDESCREEN=0 / 1 / 2` sets it there. This setting is offered only for a game build with a camera patch. Gameplay validation of this new default is [still open](../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open).
 
 ### Console mode
 
@@ -209,6 +204,7 @@ A line like `DM_PRESENT_SNAP=0` in `Documents/env.txt` (in the Files app, under 
 |---|---|---|
 | Frame rate | `DM_FPS_TARGET` | `30`, `60` |
 | Render scale | `DM_RENDER_SCALE` | `0.5` to `1.0` |
+| Screen shape | `DM_WIDESCREEN` | `2` automatic, `1` full screen, `0` 16:9 |
 | Console mode | `DM_OPMODE` | `1` docked, `0` handheld |
 | Game language | `DM_LANG` | a language code, such as `ja` |
 | Display mode (Mac) | `DM_FULLSCREEN` | `1` fullscreen, `0` a window |

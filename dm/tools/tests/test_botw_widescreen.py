@@ -21,6 +21,7 @@ from nso_asm import ADRP, B
 
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
+    assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
     return mod
 
@@ -30,7 +31,7 @@ settings = load('botw_wide_settings', ROOT / 'dm/games/settings.py')
 
 
 class Widescreen(unittest.TestCase):
-    def test_only_patched_build_offers_full_screen_by_default(self):
+    def test_only_patched_build_offers_automatic_by_default(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(settings.nacp, 'languages', return_value=['en-US']):
             main = Path(tmp) / 'main.fixups.tsv'
             for header, supported in [('', False), ('# RENDER_SCALE\t1\n', False), ('# WIDESCREEN\t1\n', True)]:
@@ -38,8 +39,8 @@ class Widescreen(unittest.TestCase):
                 rows = {s['env']: s for s in settings.build('01007EF00011E000', tmp, Path(tmp) / 'control.nacp')['settings']}
                 self.assertEqual('DM_WIDESCREEN' in rows, supported)
                 if supported:
-                    self.assertEqual(rows['DM_WIDESCREEN']['default'], '1')
-                    self.assertEqual(rows['DM_WIDESCREEN']['options'], [['1', 'Full screen'], ['0', '16:9']])
+                    self.assertEqual(rows['DM_WIDESCREEN']['default'], '2')
+                    self.assertEqual(rows['DM_WIDESCREEN']['options'], [['2', 'Automatic'], ['1', 'Full screen'], ['0', '16:9']])
 
     @unittest.skipUnless(platform.system() == 'Darwin' and platform.machine() == 'arm64' and shutil.which('clang'), 'native Apple ARM64 test')
     def test_camera_writer_and_ui_geometry(self):
@@ -89,8 +90,10 @@ int main(void) {
     put(rect,0x38,10); put(rect,0x3c,20); put(rect,0x40,1930); put(rect,0x44,1100);
     float phone=nvn_widescreen_ratio(2868,1320);
     assert(fabs(phone-2868.0/1320)<1e-6);
-    assert(!nvn_widescreen_ratio(1920,1080)); assert(!nvn_widescreen_ratio(2732,2048));
-    assert(!nvn_widescreen_ratio(0,0)); assert(!nvn_widescreen_ratio(INFINITY,1));
+    assert(!nvn_widescreen_ratio(1920,1080)); assert(!nvn_widescreen_ratio(1952,1100));   // 16:9 within 1 %
+    assert(fabs(nvn_widescreen_ratio(2732,2048)-2732.0/2048)<1e-6);   // iPad
+    assert(fabs(nvn_widescreen_ratio(1512,945)-1.6)<1e-6);   // MacBook below the notch: 16:10
+    assert(!nvn_widescreen_ratio(0,0)); assert(!nvn_widescreen_ratio(INFINITY,1)); assert(!nvn_widescreen_ratio(1,3));
     float requests[]={0,phone,phone,0};
     for(unsigned i=0;i<4;i++) {
         wide_state[14]=requests[i]; wide_state[15]=-1; projection[0x18]=0;
@@ -105,6 +108,10 @@ int main(void) {
     assert(fabs((l+r)/2-960)<1e-6);
     double hud=nvn_widescreen_x(200,1920,factor)-nvn_widescreen_x(100,1920,factor);
     assert(fabs(hud*scale-100.0*1320/1080)<0.001);
+    // 16:10 (2560x1600 shown from a 1920x1080 canvas): the HUD is flattened to a centred 16:9 band across the width
+    double f10=(2560.0/1600)/(16.0/9), sx=2560.0/1920, sy=1600.0/1080;
+    double t=nvn_widescreen_x(0,1080,1/f10), b=nvn_widescreen_x(1080,1080,1/f10);
+    assert(fabs(1920*sx/((b-t)*sy)-16.0/9)<1e-6); assert(fabs((t+b)/2-540)<1e-6);
 }
 '''
         with tempfile.TemporaryDirectory() as tmp:

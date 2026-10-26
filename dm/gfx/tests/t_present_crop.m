@@ -73,6 +73,10 @@ int main(void) { @autoreleasepool {
     wide_state_test[1] = 0;
     vp = present_viewport(1920,1080,2868,1320);
     EXPECT("16:9 restores bars",1,vp.originX>0);
+    wide_state_test[0] = wide_state_test[1] = 2560.0f / 1600;   // 16:10 (a Mac): the canvas fills it, no bars above and below
+    vp = present_viewport(1920,1080,2560,1600);
+    EXPECT("applied 16:10 camera: full display height",1600,(int)vp.height);
+    EXPECT("applied 16:10 camera: no top bar",0,(int)vp.originY);
     dm_widescreen_state = NULL;
     mtl_init();
     MTLTextureDescriptor *d=[MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:8 height:8 mipmapped:NO];d.storageMode=MTLStorageModeShared;d.usage=MTLTextureUsageShaderRead;

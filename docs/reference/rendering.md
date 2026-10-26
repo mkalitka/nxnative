@@ -378,6 +378,13 @@ The replay on Metal (`dm/gfx/nvn/nvn_mtl.m`) and the Vulkan and OpenGL layers. E
 - **Found on:** [The Legend of Zelda: Breath of the Wild — upscaling and measurements](../../dm/games/01007EF00011E000/README.md#upscaling-current).
 - **Limit:** the scaler takes the presented frame, including any filtering and HUD drawing the game already performed. Feeding it an earlier scene target would mean replacing a draw of the game's own, and nothing general identifies which draw is a plain upscale. Scaler support is checked at runtime; unsupported devices, sizes and formats use standard scaling.
 
+### Camera widescreen profiles
+
+- **Symptom:** a 16:9 game has side bars on an iPhone's wider display, or bars above and below on a 16:10 Mac or an iPad.
+- **Cause:** the game's projection and canvas use 16:9. Widening only the present stretches the world and HUD; cropping cuts off the HUD.
+- **Fix:** a build-checked profile camera stub reads a float aspect from its state page (+0x38 requested, +0x3c applied; 0 means original), and emits `WIDESCREEN` in the fixups. The loader exposes that page only for such a build. After the launcher and front end are ready, `mtl_widescreen_start` asks the front end for the whole screen (`front_fill_screen`: iOS otherwise lays the game view out as a centred 16:9 view, so its drawable was never wider; the Mac opens its window in the screen's fullscreen shape), then takes the drawable's ratio once (any ratio over 1 % from 16:9, 0.5 to 8), honoring `DM_WIDESCREEN` / the profile's `widescreen` default (`auto` leaves an iPad, and a Mac screen narrower than 16:10, at 16:9). BOTW's projection keeps its vertical field of view, so a narrower screen shows less at the sides. The presenter fits the **applied** ratio to its output in both standard and MetalFX paths. An absent stub keeps the normal present. `widescreen_ui quads` learns the depthless float canvas before the swapchain pass and squeezes its six-element UI draws and scissors about the canvas centre into a 16:9 shape: narrowed on a wider screen, flattened on a narrower one. Fullscreen triangles and quads sampling a GPU-rendered scene picture keep the whole canvas. This draw rule is game-specific knowledge in the profile, not a generic rule for every NVN game. No render-target allocation sizes change.
+- **Found on:** [Breath of the Wild 1.9.0](../../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open). Adapted from MacNativeGames `a8807a1a` (MIT). Synthetic ARM64 and presentation checks cover the mechanism; game/device validation remains open.
+
 ## Blend, depth and stencil
 
 ### No writes to colour outputs the shader does not write
@@ -898,25 +905,3 @@ Digimon Story Cyber Sleuth: Complete Edition (Media.Vision's MVGL engine, SDK 6.
 ### GL movies decoded by the SDK's movie library
 
 - **Found on:** [Digimon Story Cyber Sleuth: Complete Edition](../../dm/games/010014E00DB56000/README.md): the USM movies' H.264 is decoded through the SDK's movie library (the host's decoder) into NV12 buffers (3,110,400 bytes a 1920x1080 frame); the game uploads the planes into a `GL_RED` and a `GL_RG` texture (two `glTexSubImage2D` a frame) and converts YUV in its own shader (in `main`, `SamplerY` / `SamplerUV`).
-
-
-### Camera widescreen profiles
-
-- **Symptom:** a 16:9 game has side bars on an iPhone's wider display.
-- **Cause:** the game's projection and canvas use 16:9. Widening only the present
-  stretches the world and HUD; cropping cuts off the HUD.
-- **Fix:** a build-checked profile camera stub reads a float aspect from its state
-  page (+0x38 requested, +0x3c applied; 0 means original), and emits `WIDESCREEN`
-  in the fixups. The loader exposes that page only for such a build. After the
-  launcher and front end are ready, `mtl_widescreen_start` takes the drawable's
-  ratio once (only wider than 16:9), honoring `DM_WIDESCREEN` / the profile's
-  `widescreen` default. The presenter fits the **applied** ratio to its output in
-  both standard and MetalFX paths. An absent stub keeps the normal present.
-  `widescreen_ui quads` learns the depthless float canvas before the swapchain
-  pass and narrows its six-element UI draws and scissors about the canvas centre.
-  Fullscreen triangles and quads sampling a GPU-rendered scene picture keep the
-  whole width. This draw rule is game-specific knowledge in the profile, not a
-  generic rule for every NVN game. No render-target allocation sizes change.
-- **Found on:** [Breath of the Wild 1.9.0](../../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open).
-  Adapted from MacNativeGames `a8807a1a` (MIT). Synthetic ARM64 and presentation
-  checks cover the mechanism; game/device validation remains open.

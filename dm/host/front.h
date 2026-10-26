@@ -13,6 +13,10 @@ static inline void front_hud_env(void) {
 void front_run(void (*guest)(void));
 // The CAMetalLayer the graphics backend presents frames to (NULL when there is no window)
 void *front_metal_layer(void);
+// The game view may take the whole screen (camera widescreen, nvn_mtl.m mtl_widescreen_start): iOS otherwise lays it out as a centred 16:9 view, whose drawable keeps 16:9.
+// A screen wider than 16:9 is always taken; a narrower one (an iPad) only with narrower = 1. Any thread; the front end lays out on its main thread and does not block. Returns 1
+// once that layout is done (the drawable has the screen's shape, or stays 16:9), 0 while it is pending. The Mac opens its window in the screen's shape instead (front_run) and returns 1
+int front_fill_screen(int narrower);
 // The highest refresh rate of the window's screen in Hz, 0 = not known (Mac front_mac.m; none on iOS, whose screens run at multiples of 60 Hz). Any thread
 int front_screen_max_fps(void);
 // The frame rate the display link paces the game at (60, 30, 120; nvn_mtl.m link_sync): in fullscreen, a screen whose refresh rate is not a multiple of it is switched, while the game runs,

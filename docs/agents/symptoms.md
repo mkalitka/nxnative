@@ -383,6 +383,7 @@ One line per symptom in the [subsystem references](../reference/): what you see 
 - geometry appears inside out and almost black; a fullscreen indirect-lighting triangle is entirely culled even though its vertex data and polygon state match the game. → [Queue initialization captures the raster origin](../reference/rendering.md#queue-initialization-captures-the-raster-origin)
 - a pink window with every command buffer ignored while headless runs look right: the first presents fail on the display command buffer with `kIOGPUCommandBufferCallbackErrorPageFault`, and after a few of those macOS ignores every submission of the process ("Ignored (for causing prior/excessive GPU errors)"). → [The residency set committed before a present](../reference/rendering.md#the-residency-set-committed-before-a-present)
 - a game that renders below the screen's resolution looks soft on a phone, in a large Mac window or on a 4K screen. → [The present upscales through MetalFX](../reference/rendering.md#the-present-upscales-through-metalfx)
+- a 16:9 game has side bars on an iPhone's wider display, or bars above and below on a 16:10 Mac or an iPad. → [Camera widescreen profiles](../reference/rendering.md#camera-widescreen-profiles)
 - undefined values blended into attachments the fragment shader leaves alone. → [No writes to colour outputs the shader does not write](../reference/rendering.md#no-writes-to-colour-outputs-the-shader-does-not-write)
 - `nvnBlendStateSetAdvancedMode 8` (SRC_OVER) logged and blended with the state's own functions. → [Advanced blend modes as Porter-Duff factors](../reference/rendering.md#advanced-blend-modes-as-porter-duff-factors)
 - striped lighting: black and white bands that follow depth on every lit surface, as if every pixel were in or out of shadow at random. → [Stencil-mode texture views read through `X32_Stencil8`](../reference/rendering.md#stencil-mode-texture-views-read-through-x32_stencil8)
@@ -435,7 +436,6 @@ One line per symptom in the [subsystem references](../reference/): what you see 
 - the NSP script took the game for an OpenGL one (`main imports EGL and names glShaderSource`), the GL shader capture found no shader, and the capture boot stopped with `[nvn-mtl] FATAL cannot read the shader map` from `h_nvnQueueSubmitCommands` called in an NRO (`nro8+0xc10d0`). → [NVN in NROs under an SDL main that names GL](../reference/rendering.md#nvn-in-nros-under-an-sdl-main-that-names-gl)
 - a jump to address 0 right after `glGetFloatv(0xb12)` (`lr=main+0x2d58c4`). → [Which GL functions a game calls](../reference/rendering.md#which-gl-functions-a-game-calls)
 - in a capture run every program links with no uniforms; the game's first `Shader:send` raises a Lua error and, on the Switch, its error handler quits (Any Lua error quits a LÖVE game). → [GL shaders put together at run time and captured](../reference/rendering.md#gl-shaders-put-together-at-run-time-and-captured)
-- a 16:9 game has side bars on an iPhone's wider display. → [Camera widescreen profiles](../reference/rendering.md#camera-widescreen-profiles)
 
 ## Shaders
 

@@ -30,6 +30,7 @@ void mtl_res_counts(uint32_t tick, const char *why);   // Print one line of reso
 void mtl_res_snapshot(mtl_res_count *out);
 
 void mtl_widescreen_start(void);   // after front/launcher setup; no-op without a build-checked camera stub
+int mtl_widescreen_mode(void);   // 0 = 16:9, 1 = full screen, 2 = automatic (DM_WIDESCREEN / profile); 0 without a build-checked camera stub
 
 // One submit: begin -> several operations -> commit (returns the fence value at which this submit completes)
 void mtl_sub_begin(void);

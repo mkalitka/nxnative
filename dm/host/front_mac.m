@@ -26,6 +26,7 @@ static int g_w, g_a, g_s, g_d;
 static int g_input_on = 1;   // main thread: the game window is key, so its keyboard, mouse and controllers reach the game (input_release / input_resume)
 
 void *front_metal_layer(void) { return (__bridge void *)g_layer; }
+int front_fill_screen(int narrower) { (void)narrower; return 1; }   // front.h: the window already opened in the screen's shape for camera widescreen (front_run)
 static _Atomic int g_screen_fps;   // the window's screen's maximumFramesPerSecond, kept up to date when the window moves to another screen
 int front_screen_max_fps(void) { return g_screen_fps; }
 // The screen's refresh rate matched to the game's frame rate in fullscreen (front_screen_match, from PR #79; DM_SCREEN_MATCH=0 turns it off). 60 fps on a 144 Hz screen cannot be paced
@@ -249,13 +250,26 @@ void front_run(void (*guest)(void)) {
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
         NSRect r = NSMakeRect(0, 0, 1280, 720);
+        // Camera widescreen (nvn_mtl.m mtl_widescreen_start, which reads the drawable once): the window opens in the shape of its screen's fullscreen area (below a
+        // MacBook's notch: 16:10), 720 points high or less, and keeps that shape when resized or made fullscreen. Automatic (mode 2) takes a screen of 16:10 or wider;
+        // a narrower one (4:3, portrait) would cut too much from the sides, and the window stays 16:9. Full screen (mode 1) takes any
+        int mtl_widescreen_mode(void);
+        NSScreen *scr = NSScreen.mainScreen;
+        double sw = scr.frame.size.width, sh = scr.frame.size.height - scr.safeAreaInsets.top; int wide_mode = mtl_widescreen_mode();
+        int wide_win = sw > 0 && sh > 0 && (wide_mode == 1 || (wide_mode == 2 && sw / sh >= 1.6 * 0.99));
+        if (wide_win) {
+            NSSize vis = scr.visibleFrame.size; double h = fmin(720, fmin(vis.height * 0.9, vis.width * 0.9 * sh / sw));
+            r.size = NSMakeSize(round(h * sw / sh), round(h));
+            LOG("front end: window %.0fx%.0f, the screen's shape %.4f (camera widescreen)", r.size.width, r.size.height, sw / sh);
+        }
         NSWindow *win = [[NSWindow alloc] initWithContentRect:r
                                                     styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
                                                       backing:NSBackingStoreBuffered defer:NO];
         win.title = @DM_GAME_NAME;   // the game profile's name (game name label)
-        // Fullscreen: without FullScreenPrimary the green button only zooms the window. The present path already scales
-        // the game picture to fit the drawable with black bars around it, so fullscreen keeps the game's aspect ratio.
+        // Fullscreen: without FullScreenPrimary the green button only zooms the window. The present path scales the game picture to fit the drawable with black bars
+        // around it, so fullscreen keeps the picture's aspect ratio: the game's 16:9, or with camera widescreen the window's shape, which fills the screen
         win.collectionBehavior = NSWindowCollectionBehaviorFullScreenPrimary;
+        if (wide_win) win.contentAspectRatio = r.size;   // camera widescreen: resizing keeps the camera's shape
         NSView *v = win.contentView = [[DmGameView alloc] initWithFrame:r];
         v.wantsLayer = YES;
         g_layer = [CAMetalLayer layer];
