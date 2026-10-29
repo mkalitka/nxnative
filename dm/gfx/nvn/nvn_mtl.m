@@ -3399,7 +3399,8 @@ static void wide_canvas_note(MTL4RenderPassDescriptor *pd) {
             if (++changes <= 8 || changes % 600 == 0) MLOG("widescreen canvas: texture %llu (change %u)", g_wide_canvas, changes);
         }
     } else if (c.width >= 640 && c.height && fabs((double)c.width / c.height * 9 / 16 - 1) < 0.01 &&
-               pd.colorAttachments[0].level == 0 && c.pixelFormat == MTLPixelFormatRGBA16Float && !pd.depthAttachment.texture)
+               pd.colorAttachments[0].level == 0 && (pf_is_float(c.pixelFormat) || c.pixelFormat == MTLPixelFormatRGB10A2Unorm) &&   // BOTW's canvas is RGB10A2
+               !pd.depthAttachment.texture)
         g_wide_last_canvas = t->serial;
 }
 static id<MTL4RenderCommandEncoder> rp_begin_ex(int clear_only);
