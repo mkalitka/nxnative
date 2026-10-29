@@ -186,9 +186,17 @@ For a replaced DSP renderer the size query keeps the service's work-buffer contr
 
 - **Symptom:** a game is silent on an iPhone whose ring / silent switch is set to silent, though the volume is up; a game or video app plays through the switch.
 - **Cause:** the audio session's category was `AVAudioSessionCategorySoloAmbient`, which iOS silences with the switch.
-- **Fix:** `front_ios_audio_session` in `front_ios.m` sets `AVAudioSessionCategoryPlayback`: the switch no longer mutes the game, and it still interrupts other apps' audio, as `SoloAmbient` did. The host still suspends its output when the app goes to the background (no background audio mode is declared).
+- **Fix:** `front_ios_audio_session` in `front_ios.m` sets `AVAudioSessionCategoryPlayback`: the switch no longer mutes the game. (It also interrupted other apps' audio, as `SoloAmbient` did, until [Music from another app](#music-from-another-app-stopped-by-the-game-on-ios).) The host still suspends its output when the app goes to the background (no background audio mode is declared).
 - **Found on:** [The Legend of Zelda: Breath of the Wild](../../dm/games/01007EF00011E000/README.md) (iPhone: reported by the player); also [issue #155](https://github.com/seedds/nxnative/issues/155), whose commenter has to toggle the switch to hear any game.
 - **Check:** open question, not run on a device: with the switch on silent, the game's sound should play; the log's `audio session:` line shows the session came up.
+
+### Music from another app stopped by the game on iOS
+
+- **Symptom:** Spotify or Apple Music stops when the game starts or comes back to the foreground, and music started during play silences the game until it returns to the foreground, which stops the music again.
+- **Cause:** the `Playback` session did not mix with others: activating it interrupted every other app's audio, and another app starting its own interrupted the game's.
+- **Fix:** `front_ios_audio_session` adds `AVAudioSessionCategoryOptionMixWithOthers`, so the game no longer stops other apps. While another app plays (`secondaryAudioShouldBeSilencedHint`, followed through `AVAudioSessionSilenceSecondaryAudioHintNotification` and checked again when the app becomes active), `front_ios_audio_apply` suspends the game's output as for the background: the silent sink keeps the game's pacing, and the sound comes back when the other app stops. The switch still does not mute the game.
+- **Found on:** [The Legend of Zelda: Breath of the Wild](../../dm/games/01007EF00011E000/README.md) (iPhone: reported by the player).
+- **Check:** open, not run on a device: play music in Spotify, then start the game (music keeps playing, game silent); pause the music (the game's sound comes back; the log's `audio session: another app's audio` lines).
 
 ### Interruptions that stop RemoteIO callbacks
 

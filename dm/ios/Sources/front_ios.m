@@ -239,12 +239,14 @@ void front_save_failed(int err) {
 
 // Audio session: the frames RemoteIO asks for in each callback follow the I/O buffer duration, about 21 ms by default on iOS (1024 frames at 48 kHz). The game keeps only 4 blocks × 5 ms = 20 ms in flight,
 // so every callback came up 1.3 ms short and was zero-filled, about 47 gaps per second (crackling; reproducible on the Mac by forcing 1024-frame callbacks: 1999 underruns in 2000 callbacks). Ask for 5 ms and the system picks the nearest it supports;
-// the category is Playback, as a game's or media app's: the ring / silent switch does not mute it (the default SoloAmbient follows the switch, which silenced the game whenever the phone was on silent) and it still interrupts other apps' audio.
-// Set once at boot and again on return to the foreground (the system may reset it after an interruption)
+// the category is Playback, as a game's or media app's: the ring / silent switch does not mute it (the default SoloAmbient follows the switch, which silenced the game whenever the phone was on silent).
+// It mixes with other apps' audio, so music from another app (Spotify, Apple Music) is not stopped by the game; while such an app plays (secondaryAudioShouldBeSilencedHint), the game's sound is muted
+// (front_ios_audio_watch) and comes back when that app stops. Set once at boot and again on return to the foreground (the system may reset it after an interruption)
 static int g_session_off;   // the last activation failed (another app or a call still held the session): tried again when the app becomes active
+static int g_audio_bg, g_audio_intr, g_audio_other;   // main queue: in the background, interrupted, another app playing
 void front_ios_audio_session(void) {
     AVAudioSession *s = AVAudioSession.sharedInstance; NSError *e = nil;
-    if (![s setCategory:AVAudioSessionCategoryPlayback error:&e]) LOG("[RED] audio session category could not be set: %s", e.localizedDescription.UTF8String);
+    if (![s setCategory:AVAudioSessionCategoryPlayback withOptions:AVAudioSessionCategoryOptionMixWithOthers error:&e]) LOG("[RED] audio session category could not be set: %s", e.localizedDescription.UTF8String);
     [s setPreferredSampleRate:48000 error:nil];
     if (![s setPreferredIOBufferDuration:0.005 error:&e]) LOG("[RED] audio session I/O buffer duration could not be set: %s", e.localizedDescription.UTF8String);
     g_session_off = ![s setActive:YES error:&e];
@@ -254,11 +256,19 @@ void front_ios_audio_session(void) {
 
 // Real audio output is suspended (the silent sink paces the game) while the app is in the background or another audio session has interrupted ours (Siri, an alarm, a call).
 // Without the interruption observer the AudioUnits stayed "started" while iOS no longer called them, and a game waiting for its buffers back lost its sound until restart.
-// All of this runs on the main queue, like the scene callbacks
-static int g_audio_bg, g_audio_intr;
-static void front_ios_audio_apply(void) { dm_audio_suspend(g_audio_bg || g_audio_intr); }
+// All of this runs on the main queue, like the scene callbacks. Another app's audio mutes the game the same way: its output is suspended and the silent sink keeps the game's pacing
+static void front_ios_audio_apply(void) { dm_audio_suspend(g_audio_bg || g_audio_intr || g_audio_other); }
+static void front_ios_audio_other(const char *why) {
+    int on = AVAudioSession.sharedInstance.secondaryAudioShouldBeSilencedHint;
+    if (on != g_audio_other) LOG("audio session: another app's audio %s (%s): the game's sound %s", on ? "plays" : "stopped", why, on ? "muted" : "back");
+    g_audio_other = on;
+}
 static void front_ios_audio_watch(void) {
     NSNotificationCenter *nc = NSNotificationCenter.defaultCenter;
+    [nc addObserverForName:AVAudioSessionSilenceSecondaryAudioHintNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
+        (void)n; front_ios_audio_other("hint"); front_ios_audio_apply();
+    }];
+    front_ios_audio_other("start"); front_ios_audio_apply();
     [nc addObserverForName:AVAudioSessionInterruptionNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n) {
         NSUInteger type = [n.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue], reason = [n.userInfo[AVAudioSessionInterruptionReasonKey] unsignedIntegerValue];
         if (type == AVAudioSessionInterruptionTypeBegan) { LOG("audio session: interrupted (reason %lu)", (unsigned long)reason); g_audio_intr = 1; }
@@ -298,6 +308,7 @@ void front_ios_focus_event(int ev) {
             UIApplication.sharedApplication.idleTimerDisabled = YES;
             if (g_audio_intr) { LOG("audio session: active again with no interruption-ended notice; resuming"); g_audio_intr = 0; g_session_off = 1; }
             if (g_session_off) front_ios_audio_session();
+            front_ios_audio_other("active");   // another app may have started or stopped while the game was in the background (no hint arrives then)
             front_ios_audio_apply(); dm_gamepad_active(); dm_focus_set(1); break;
     }
 }
