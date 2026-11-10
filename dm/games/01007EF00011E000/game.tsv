@@ -18,9 +18,7 @@ app_category	public.app-category.adventure-games
 pad_layout	full
 
 # ---- Graphics ----
-# The camera takes the screen's shape (wider on an iPhone, 16:10 on a Mac), with the UI kept a centred 16:9; only builds with WIDESCREEN fixups.
-# auto: an iPad keeps 16:9 (its narrower screen would show less at the sides). DM_WIDESCREEN=0 / the launcher's 16:9 choice restores the original view.
-widescreen	auto
+# A Picture shape (DM_SCREEN_ASPECT, below) wider than 16:9 widens the camera (an iPhone's about 19.5:9; only builds with WIDESCREEN fixups), with the UI kept a centred 16:9
 widescreen_ui	quads
 # The frame-interval controller (60 fps cuts in patches.py) and dynamic resolution read the GPU time between the frame's two timestamp reports: each report takes its segment's GPU start / end
 gpu_timestamps	segment
@@ -34,7 +32,8 @@ fps_target	60
 present_snap	on
 pso_mtl4	on
 # Screen shape (patches.py): DM_SCREEN_ASPECT renders a screen taller than 16:9 in its own shape, the iPhone Duo's 1.43:1 as
-# 1920x1344 with a 1280x896 layout space, the HUD at the screen's edges and 16:9's sides in view (more above and below); the iOS launcher offers it
+# 1920x1344 with a 1280x896 layout space, the HUD at the screen's edges and 16:9's sides in view (more above and below); the launcher offers it as Picture shape,
+# whose Match screen (the default) also takes a screen wider than 16:9 through the camera widescreen above
 screen_aspect	on
 
 # ---- Versions ----

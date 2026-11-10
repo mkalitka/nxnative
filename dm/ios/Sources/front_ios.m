@@ -30,7 +30,6 @@ static CAMetalLayer *g_layer;
 static void front_ios_notify_setup(void);
 static void front_ios_notify_ask(void);
 static _Atomic int g_fill;   // front_fill_screen: 0 = the centred 16:9 game view, 1 = whole screen asked for, 2 = laid out
-static _Atomic int g_fill_narrower;   // a screen narrower than 16:9 (an iPad) is taken too
 static void front_ios_power_watch(void);
 static void front_ios_audio_watch(void);
 static UILabel *front_ios_fps_label(void);
@@ -154,12 +153,12 @@ static void launcher_done(void) { [g_root startGame]; }
     const char *dev = front_ios_device_check();   // that first device: a GPU without BC textures is refused here, not at launch, so the launcher's HUD switch counts
     if (dev) { [self showHint:[NSString stringWithFormat:@"This device is not supported.\n%s", dev]]; return; }   // the host does not start
     {   // Picture shape "auto" (the launcher's Match screen): the app window's own shape when it is taller than 16:9 (an iPad's 4:3, an unfolded iPhone Duo's 1.43:1; loader.c
-        // takes 1.3 to 1.77), else 16:9. The window's, not the screen's: on an iPad under Stage Manager or Split View the app does not fill the screen. Resolved here, before the
-        // host writes the state page (main.c dm_fps_state_apply)
+        // takes 1.3 to 1.77) or wider (an iPhone's about 19.5:9: the camera widens, nvn_mtl.m mtl_widescreen_start), else 16:9 (front.h). The window's, not the screen's: on
+        // an iPad under Stage Manager or Split View the app does not fill the screen. Resolved here, before the host writes the state page (main.c dm_fps_state_apply)
         const char *a = getenv("DM_SCREEN_ASPECT");
         if (a && !strcmp(a, "auto")) {
             CGSize sz = self.view.window ? self.view.window.bounds.size : UIScreen.mainScreen.bounds.size; double r = MAX(sz.width, sz.height) / MAX(MIN(sz.width, sz.height), 1);
-            char v[16]; if (r >= 1.3 && r < 1.77) snprintf(v, sizeof v, "%.3f", r); else strcpy(v, "0");
+            char v[16]; if (front_aspect_taller(r) || front_aspect_wider(r)) snprintf(v, sizeof v, "%.3f", r); else strcpy(v, "0");
             setenv("DM_SCREEN_ASPECT", v, 1); LOG("front end: picture shape auto: window %.0fx%.0f points (%.3f:1) → DM_SCREEN_ASPECT=%s", sz.width, sz.height, r, v);
         }
     }
@@ -200,8 +199,8 @@ static void launcher_done(void) { [g_root startGame]; }
     UIEdgeInsets gameInsets = dm_game_safe_insets(b, self.view.safeAreaInsets, duoPortrait);
     BOOL onTV = self.game.superview != self.view;   // the TV's view lays the picture out; the phone is all pad
     DmLayout layout = onTV ? dm_layout_pad_only(b) : dm_layout_picture(dm_layout(b, gameInsets, self.partiallyOpen, division, g_picture_aspect), b, self.fill, g_picture_aspect);
-    double fr = b.size.width / b.size.height / (16.0 / 9.0);   // camera widescreen (front_fill_screen): the whole screen when it is wider than 16:9, or narrower and that was asked for
-    if (!onTV && !layout.separated && atomic_load(&g_fill) != 0 && (fr > 1.01 || (fr < 0.99 && atomic_load(&g_fill_narrower)))) layout.game = b;
+    // camera widescreen (front_fill_screen): the whole screen when it is wider than 16:9
+    if (!onTV && !layout.separated && atomic_load(&g_fill) != 0 && front_aspect_wider(b.size.width / b.size.height)) layout.game = b;
     if (!onTV) self.game.frame = layout.game;
     if (atomic_load(&g_fill)) { [self.game layoutIfNeeded]; atomic_store(&g_fill, 2); }   // the drawable has its new size before mtl_widescreen_start reads it
     layout.topSafeOnly = duoPortrait;
@@ -438,8 +437,8 @@ void front_program_handoff(int index, const char *name) {   // front.h; on the g
     else if (err) LOG("[RED] front end: the notification for program %d could not be scheduled: %s", index, err.localizedDescription.UTF8String);
     else LOG("front end: \"Starting %s\" shown, notification for program %d scheduled", nm.UTF8String, index);
 }
-int front_fill_screen(int narrower) {   // front.h: the game view takes the whole screen when that is not 16:9 (viewDidLayoutSubviews)
-    int was = 0; if (narrower) atomic_store(&g_fill_narrower, 1);
+int front_fill_screen(void) {   // front.h: the game view takes the whole screen when it is wider than 16:9 (viewDidLayoutSubviews)
+    int was = 0;
     if (atomic_compare_exchange_strong(&g_fill, &was, 1))
         dispatch_async(dispatch_get_main_queue(), ^{ UIView *v = g_root.view; [v setNeedsLayout]; [v layoutIfNeeded]; });
     return atomic_load(&g_fill) == 2;

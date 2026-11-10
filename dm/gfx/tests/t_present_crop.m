@@ -91,10 +91,9 @@ int main(void) { @autoreleasepool {
     wide_state_test[1] = 0;
     vp = present_viewport(1920,1080,2868,1320);
     EXPECT("16:9 restores bars",1,vp.originX>0);
-    wide_state_test[0] = wide_state_test[1] = 2560.0f / 1600;   // 16:10 (a Mac): the canvas fills it, no bars above and below
+    wide_state_test[0] = wide_state_test[1] = 2560.0f / 1600;   // 16:10 is taller than 16:9: not the camera's (DM_SCREEN_ASPECT renders it), so the 16:9 canvas keeps its bars
     vp = present_viewport(1920,1080,2560,1600);
-    EXPECT("applied 16:10 camera: full display height",1600,(int)vp.height);
-    EXPECT("applied 16:10 camera: no top bar",0,(int)vp.originY);
+    EXPECT("16:10 is no camera aspect: bars above and below",1,vp.originY>0);
     dm_widescreen_state = NULL;
     mtl_init();
 #ifndef CROP_LEGACY_HEADER

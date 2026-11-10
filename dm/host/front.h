@@ -9,14 +9,22 @@ static inline void front_hud_env(void) {
     // Spatial scaling has no temporal exposure: showing that HUD metric makes the MetalFX rows flicker.
     setenv("MTL_HUD_HIDE_METALFX_METRICS", "1", 0);
 }
+// Picture shape (DM_SCREEN_ASPECT, the launcher's one setting for a screen of another shape than 16:9): the width / height ranges the host follows. Taller than 16:9
+// (1.3 to 1.77): the game renders that shape (loader.c, the screen-shape stubs of a profile with screen_aspect on). Wider (over 1 % past 16:9, up to 8): the camera widens
+// into the game's 16:9 canvas (nvn_mtl.m mtl_widescreen_start, a build with the WIDESCREEN camera stub). Anything else is 16:9
+static inline int front_aspect_taller(double a) { return a >= 1.3 && a < 1.77; }
+static inline int front_aspect_wider(double a) { return a > 16.0 / 9.0 * 1.01 && a <= 8; }
+// The shape Picture shape "auto" (Match screen) resolves to where the front end has not resolved it before the host starts: the Mac's, the width / height of the main screen's
+// fullscreen area (below a MacBook's notch), read by loader.c; 0 = none (no window; iOS resolves it in its front end from the app window)
+double front_screen_aspect(void);
 // Run the guest: with a window the guest runs on its own thread and the main thread belongs to the system UI; without a window it runs directly on the current thread.
 void front_run(void (*guest)(void));
 // The CAMetalLayer the graphics backend presents frames to (NULL when there is no window)
 void *front_metal_layer(void);
 // The game view may take the whole screen (camera widescreen, nvn_mtl.m mtl_widescreen_start): iOS otherwise lays it out as a centred 16:9 view, whose drawable keeps 16:9.
-// A screen wider than 16:9 is always taken; a narrower one (an iPad) only with narrower = 1. Any thread; the front end lays out on its main thread and does not block. Returns 1
-// once that layout is done (the drawable has the screen's shape, or stays 16:9), 0 while it is pending. The Mac opens its window in the screen's shape instead (front_run) and returns 1
-int front_fill_screen(int narrower);
+// Only a screen wider than 16:9 is taken. Any thread; the front end lays out on its main thread and does not block. Returns 1 once that layout is done (the drawable has the
+// screen's shape, or stays 16:9), 0 while it is pending. The Mac opens its window in the Picture shape instead (front_run) and returns 1
+int front_fill_screen(void);
 // The highest refresh rate of the window's screen in Hz, 0 = not known (Mac front_mac.m; none on iOS, whose screens run at multiples of 60 Hz). Any thread
 int front_screen_max_fps(void);
 // The pixel size of the display the game is shown on: on the Mac the window's screen in its current mode (the main display before the window is up) (a scaled Retina mode's pixels), an iPhone's or iPad's screen (nativeBounds).

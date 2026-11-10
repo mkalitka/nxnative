@@ -3,7 +3,7 @@
 The screen before the game starts shows the settings the game supports. A setting that only matters while another is on appears under it and disappears when that one is turned off. Tap **Play** to start; the app remembers your choices for the next start. All settings are on one scrollable screen, under **Game**, **Controls** and **Performance**. Tap a menu or move a slider there; no settings page needs opening. **Upscaling** is in **Game**, beside **Console mode**. A Mac app shows the same settings in a [window of its own](#the-mac-settings-window).
 
 - [Tested defaults](#tested-defaults)
-- [Game](#game): [Frame rate](#frame-rate), [Render scale](#render-scale), [Screen shape](#screen-shape), [Console mode](#console-mode), [Upscaling](#upscaling), [Game's upscaler](#games-upscaler), [Game language](#game-language), [Picture](#picture), [Frame-rate counter](#frame-rate-counter)
+- [Game](#game): [Frame rate](#frame-rate), [Render scale](#render-scale), [Console mode](#console-mode), [Upscaling](#upscaling), [Game's upscaler](#games-upscaler), [Game language](#game-language), [Picture](#picture), [Frame-rate counter](#frame-rate-counter)
 - [Controls](#controls): [Touch feedback](#touch-feedback), [Game rumble](#game-rumble), [Rumble strength](#rumble-strength), [Rumble cutoff](#rumble-cutoff), [Press a button to join](#press-a-button-to-join)
 - [Performance](#performance): [Frame buffering](#frame-buffering), [Metal 4 pipelines](#metal-4-pipelines), [Pipeline prebuild](#pipeline-prebuild), [Encode thread](#encode-thread), [Hold frames when late](#hold-frames-when-late), [Performance HUD](#performance-hud), [Reset to tested defaults](#reset-to-tested-defaults)
 - [The Mac settings window](#the-mac-settings-window): [Display mode](#display-mode)
@@ -36,10 +36,6 @@ Off, the default, keeps the 3D picture at full size. On lets the game lower its 
 The size of the 3D picture, from 50 to 100 %. Below 100 % the size is fixed there and the game's own dynamic resolution is off; 100 % keeps the game's own. Lower can be lighter on the GPU but is blurrier; the HUD and text keep their sharpness. Only games the app can scale offer it.
 
 Hades II goes up to 300 %: it renders its whole picture, the HUD and text included, at 1280x720 docked and handheld, and above 100 % it renders larger instead of being scaled up: 150 % is 1920x1080, 200 % 2560x1440, 300 % 3840x2160. Sharper on a large screen or window, at more GPU time (about 2.5 times the GPU time at 200 % on an Apple M6); on a small screen the difference is slight. [Its note](../dm/games/0100A00019DE0000/README.md#rendering) has the measurements.
-
-### Screen shape
-
-Breath of the Wild 1.9.0 fills the screen: the camera takes the screen's shape, with the HUD centered at its original proportions. On an iPhone it shows more at the sides and draws behind the Dynamic Island. **Auto** (the default) does this everywhere except on an iPad, which keeps 16:9: there the camera would show less at the sides. **Full screen** fills an iPad too; **16:9** restores the original view and bars. On a Mac the window opens in the screen's shape (16:10 on a MacBook, a little less at the sides than 16:9; Auto keeps 16:9 on a screen narrower than 16:10); `DM_WIDESCREEN=0 / 1 / 2` sets it there. This setting is offered only for a game build with a camera patch. Gameplay validation of this new default is [still open](../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open).
 
 ### Console mode
 
@@ -91,7 +87,7 @@ iPhone and iPad. **Fit**, the default, shows the game's picture (16:9, or the ta
 
 ### Picture shape
 
-Games whose profile supports it (Breath of the Wild, Animal Crossing: New Horizons). **iPhone Duo screen (1.43:1)** renders a taller picture of the Duo's own shape: the sides of 16:9 with more above and below, and the HUD at the screen's edges. **16:9** is the Switch's picture. The taller picture has about a quarter more pixels, so it runs a little slower and warmer.
+Games whose profile supports it (Breath of the Wild, Animal Crossing: New Horizons). **Match screen** (the default) takes the shape of the screen, or of the app window on an iPad: a screen taller than 16:9 (an iPad's 4:3, the iPhone Duo's 1.43:1, a MacBook's 16:10 below the notch) gets a taller picture of its own shape, the sides of 16:9 with more above and below and the HUD at the screen's edges. The taller picture has more pixels (about a quarter more at 1.43:1), so it runs a little slower and warmer. A screen wider than 16:9 (an iPhone) fills the screen where the game has a camera patch (Breath of the Wild 1.9.0): the camera shows more at the sides, the HUD stays centered at its original proportions, and the picture draws behind the Dynamic Island; other games keep 16:9 there. Gameplay validation of the wider picture is [still open](../dm/games/01007EF00011E000/README.md#full-screen-implemented-gameplay-validation-open). On a Mac the window opens in the picture's shape. **iPhone Duo screen (1.43:1)** always renders the Duo's shape. **16:9** is the Switch's picture.
 
 ### Frame-rate counter
 
@@ -271,13 +267,12 @@ A line like `DM_PRESENT_SNAP=0` in `Documents/env.txt` (in the Files app, under 
 |---|---|---|
 | Frame rate | `DM_FPS_TARGET` | `30`, `60`, `120` (Mac, games with `fps_max 120`) |
 | Render scale | `DM_RENDER_SCALE` | `0.5` to `1.0` (Hades II: to `3.0`) |
-| Screen shape | `DM_WIDESCREEN` | `2` automatic, `1` full screen, `0` 16:9 |
 | Console mode | `DM_OPMODE` | `1` docked, `0` handheld |
 | Game language | `DM_LANG` | a language code, such as `ja` |
 | Display mode (Mac) | `DM_FULLSCREEN` | `1` fullscreen, `0` a window |
 | Cloud saves folder (Mac) | `DM_SAVE_SYNC` | a folder; `icloud`: iCloud Drive › nxnative Saves; `0`: off |
 | Picture (iPhone and iPad) | `DM_PICTURE_FIT` | `fit` 16:9 with black bars, `fill` covers the screen, cropped |
-| Picture shape | `DM_SCREEN_ASPECT` | `auto` the app window's own shape where it is taller than 16:9 (iPad 4:3, iPhone Duo 1.43:1), else 16:9 (iOS only); `1.43` the iPhone Duo's shape, `0` 16:9 |
+| Picture shape | `DM_SCREEN_ASPECT` | `auto` the screen's own shape where it is taller than 16:9 (iPad 4:3, iPhone Duo 1.43:1, MacBook 16:10) or wider (an iPhone; games with a camera patch), else 16:9; a width / height (`1.43` the iPhone Duo's), `0` 16:9 |
 | Frame-rate counter | `DM_SHOW_FPS` | `1`, `0` |
 | Touch feedback | `DM_TOUCH_HAPTICS` | `1`, `0` |
 | Game rumble | `DM_RUMBLE` | `1`, `0` |

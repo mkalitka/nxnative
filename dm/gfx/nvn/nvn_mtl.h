@@ -34,7 +34,7 @@ void mtl_res_counts(uint32_t tick, const char *why);   // Print one line of reso
 void mtl_res_snapshot(mtl_res_count *out);
 
 void mtl_widescreen_start(void);   // after front/launcher setup; no-op without a build-checked camera stub
-int mtl_widescreen_mode(void);   // 0 = 16:9, 1 = full screen, 2 = automatic (DM_WIDESCREEN / profile); 0 without a build-checked camera stub
+int mtl_widescreen_mode(void);   // 1 = Picture shape (DM_SCREEN_ASPECT) wider than 16:9 and a build-checked camera stub; else 0
 
 // One submit: begin -> several operations -> commit (returns the fence value at which this submit completes)
 void mtl_prepare(void);                                // the first submission's prepare step (prewarm, pipeline prebuild): no GPU work, called outside the graphics gate

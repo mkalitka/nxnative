@@ -8,7 +8,7 @@ How to build and install a game: [README](../README.md#how-to-play).
 
 ## Screen shape
 
-Breath of the Wild 1.9.0 fills the screen instead of showing a 16:9 picture with bars: the camera takes the screen's shape (more of the world at the sides on an iPhone, 16:10 in a MacBook window), and the HUD keeps its original proportions in the middle. **Auto** (the default) keeps 16:9 on an iPad, where filling the screen would show less at the sides; **Full screen** fills it anyway, and **16:9** restores the original picture. Details: [Screen shape](settings.md#screen-shape).
+Breath of the Wild 1.9.0 fills the screen instead of showing a 16:9 picture with bars. The **Picture shape** setting's default, **Match screen**, takes the screen's shape: on an iPhone the camera shows more of the world at the sides, with the HUD at its original proportions in the middle; on a taller screen (an iPad, a MacBook's 16:10, the iPhone Duo) the game renders a taller picture with more above and below. **16:9** restores the original picture. Details: [Picture shape](settings.md#picture-shape).
 
 ## Touch controls
 

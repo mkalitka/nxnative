@@ -1,6 +1,7 @@
 // Multi-module loading (playing the role of Horizon's rtld): mapping, claiming thread slots, gate registration, cross-module relocation, take-over by name, segment permissions.
 // The code area (original text and patch area) is set to read-only+execute as soon as it is copied in, and from then on the loader only writes data: on iOS these two blocks must be embedded as is as signed code segments.
 #include "dm.h"
+#include "front.h"
 #include <TargetConditionals.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -307,6 +308,7 @@ static void read_layout(module_t *m, const char *dir) {
 // (hle_nvn.c fstep_tick)
 uint8_t *dm_fps_state;
 uint8_t *dm_widescreen_state;   // non-NULL only with a build-checked camera aspect stub
+__attribute__((weak)) double front_screen_aspect(void) { return 0; }   // front_mac.m; iOS resolves Picture shape in its front end, host tests have none
 static const char *g_fps_mod;   // the module holding the state page (for the log)
 static float g_render_scale_max = 1.0f;   // the render-scale stub's largest scale (RENDER_SCALE in its fixups table; 1 for a stub that only lowers the game's size)
 static void install_fps_state(module_t *m) {
@@ -333,13 +335,23 @@ void dm_fps_state_apply(void) {
     const char *dr = getenv("DM_DYNAMIC_RESOLUTION"); uint32_t dyn = dr && !strcmp(dr, "1");
     if (dr && strcmp(dr, "0") && strcmp(dr, "1")) LOG("[RED] DM_DYNAMIC_RESOLUTION=%s: must be 0 or 1; keeping full resolution", dr);
     memcpy(dm_fps_state + 0x40, &dyn, sizeof dyn);
+    // Picture shape "auto" (Match screen) not resolved by the front end before the game starts: the Mac's (front_mac.m front_screen_aspect, the main screen's shape), written
+    // back so the window (front_run) and the camera (nvn_mtl.m mtl_widescreen_mode) read the same value. No shape (no window, a 16:9 screen): 16:9
+    const char *as = getenv("DM_SCREEN_ASPECT");
+    if (as && !strcmp(as, "auto")) {
+        double sa = front_screen_aspect(); char v[16];
+        if (front_aspect_taller(sa) || front_aspect_wider(sa)) snprintf(v, sizeof v, "%.3f", sa); else strcpy(v, "0");
+        setenv("DM_SCREEN_ASPECT", v, 1); as = getenv("DM_SCREEN_ASPECT");
+        LOG("%s: picture shape auto: screen %.3f:1 → DM_SCREEN_ASPECT=%s", g_fps_mod, sa, v);
+    }
+    // A shape wider than 16:9 is the camera's (nvn_mtl.m mtl_widescreen_start, for a build with the WIDESCREEN camera stub): nothing in this page; the game keeps its 16:9 sizes.
     // Screen shape: DM_SCREEN_ASPECT, the screen's width / height between 1.3 and 1.77, makes the builds with screen-shape stubs
     // (Breath of the Wild 1.9.0's patches.py) render that shape: the output keeps its width (1920) and takes the height that gives the ratio, a multiple of 48 so the
     // 2/3-size layout space (1280 wide) stays whole: 1.43 → 1920x1344 and 1280x896. State +0x48 u32 output height, +0x4c u32 layout height, +0x50 its float; 0 = 16:9
-    const char *as = getenv("DM_SCREEN_ASPECT");
-    if (as && *as && strcmp(as, "0") && strcmp(as, "auto")) {   // 0: 16:9; auto: the iOS front end resolves it to the screen's shape (a Mac window has none)
+    if (as && *as && strcmp(as, "0")) {   // 0: 16:9
         char *end; float a = strtof(as, &end);
-        if (end == as || *end || !(a >= 1.3f && a < 1.77f)) LOG("[RED] DM_SCREEN_ASPECT=%s: a width / height from 1.3 to 1.77; keeping 16:9", as);
+        if (end != as && !*end && front_aspect_wider(a)) LOG("%s: picture shape %.3f, wider than 16:9: the camera widens where the build has its stub, the game's sizes stay 16:9", g_fps_mod, a);
+        else if (end == as || *end || !front_aspect_taller(a)) LOG("[RED] DM_SCREEN_ASPECT=%s: a width / height from 1.3 to 1.77, or wider than 16:9; keeping 16:9", as);
         else {
             uint32_t oh = (uint32_t)(1920.0f / a / 48.0f + 0.5f) * 48, lh = oh * 2 / 3; float lf = (float)lh;
             memcpy(dm_fps_state + 0x48, &oh, 4); memcpy(dm_fps_state + 0x4c, &lh, 4); memcpy(dm_fps_state + 0x50, &lf, 4);
