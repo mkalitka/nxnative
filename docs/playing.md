@@ -6,6 +6,10 @@ How to build and install a game: [README](../README.md#how-to-play).
 - **Saves and logs** are in the Files app, under the game's name: `save/` and `log.txt` (the previous run is `log.prev.txt`). When something goes wrong, send `log.txt`.
 - **Reinstalling:** some sideloading tools give a reinstalled app a new data folder. Copy `save/` and `pso_user.tsv` over from the old one to keep your progress.
 
+## Screen shape
+
+Breath of the Wild 1.9.0 fills the screen instead of showing a 16:9 picture with bars: the camera takes the screen's shape (more of the world at the sides on an iPhone, 16:10 in a MacBook window), and the HUD keeps its original proportions in the middle. **Auto** (the default) keeps 16:9 on an iPad, where filling the screen would show less at the sides; **Full screen** fills it anyway, and **16:9** restores the original picture. Details: [Screen shape](settings.md#screen-shape).
+
 ## Touch controls
 
 The gear at the top centre opens the in-game menu: **Controller layout** switches between **2D** and **3D** (and **Tap**, every touch to the game, in handheld mode), and the settings that take effect at once are there too, such as **Picture**, **Console mode** and **Game rumble** ([In-game menu](settings.md#in-game-menu)). The app remembers your choices. Wonder, Engage, Dread, 13 Sentinels, Link's Awakening, Ace Attorney Investigations Collection, Unicorn Overlord, Rhythm Heaven Groove, Octopath Traveler 0, Pokémon Legends: Z-A, Cuphead, Absolum, Blasphemous 2, Brain Memory Training Academy, The Great Ace Attorney Chronicles, STEINS;GATE RE:BOOT, Big Brain Academy: Brain vs. Brain, Patrick's Parabox, Celeste, Raging Loop and Mario vs. Donkey Kong start in 2D, the other games in 3D (STEINS;GATE RE:BOOT's quick save is R3, in the 3D layout).
